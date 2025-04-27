@@ -1,0 +1,4 @@
+.direnv
+coverage.out
+data.db*
+result
