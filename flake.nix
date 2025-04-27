@@ -54,7 +54,7 @@
         src = gitignore.lib.gitignoreSource ./.;
         go = pkgs.go;
         subPackages = [ "cmd/kv" ];
-        vendorHash = "sha256-gC0FoXveGZbwVaG2kq3E/GlqiC2FkPPPx5PC7lOoow4=";
+        vendorHash = "sha256-O1mTNMMRCwcjHyjNv8rTBuGcHa8oK1oW3zhzOh/n3Zg=";
         CGO_ENABLED = 0;
         flags = [
           "-trimpath"
