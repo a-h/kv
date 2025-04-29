@@ -11,10 +11,11 @@ import (
 
 	"github.com/a-h/kv"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Postgres struct {
-	Conn *pgx.Conn
+	Pool *pgxpool.Pool
 	Now  func() time.Time
 }
 
@@ -23,9 +24,9 @@ type SQLStatement struct {
 	NamedParams pgx.NamedArgs
 }
 
-func New(conn *pgx.Conn) *Postgres {
+func New(pool *pgxpool.Pool) *Postgres {
 	return &Postgres{
-		Conn: conn,
+		Pool: pool,
 		Now:  time.Now,
 	}
 }
@@ -38,7 +39,7 @@ func (p *Postgres) SetNow(now func() time.Time) {
 }
 
 func (p *Postgres) Init(ctx context.Context) (err error) {
-	tx, err := p.Conn.Begin(ctx)
+	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("init: begin: %w", err)
 	}
@@ -68,7 +69,7 @@ func (p *Postgres) Init(ctx context.Context) (err error) {
 }
 
 func (p *Postgres) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
-	rows, err := p.Conn.Query(ctx, `SELECT key, version, value, created FROM kv WHERE key = @key;`, pgx.NamedArgs{"key": key})
+	rows, err := p.Pool.Query(ctx, `SELECT key, version, value, created FROM kv WHERE key = @key;`, pgx.NamedArgs{"key": key})
 	if err != nil {
 		return r, false, fmt.Errorf("get: query: %w", err)
 	}
@@ -217,7 +218,7 @@ func (p *Postgres) CountRange(ctx context.Context, from, to string) (int64, erro
 }
 
 func (p *Postgres) Mutate(ctx context.Context, stmts []SQLStatement) ([]int64, error) {
-	tx, err := p.Conn.Begin(ctx)
+	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("mutate: begin: %w", err)
 	}
@@ -270,7 +271,7 @@ func (p *Postgres) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]i
 }
 
 func (p *Postgres) query(ctx context.Context, sql string, args pgx.NamedArgs) ([]kv.Record, error) {
-	rows, err := p.Conn.Query(ctx, sql, args)
+	rows, err := p.Pool.Query(ctx, sql, args)
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)
 	}
@@ -290,7 +291,7 @@ func (p *Postgres) query(ctx context.Context, sql string, args pgx.NamedArgs) ([
 }
 
 func (p *Postgres) queryScalarInt64(ctx context.Context, sql string, args pgx.NamedArgs) (int64, error) {
-	row := p.Conn.QueryRow(ctx, sql, args)
+	row := p.Pool.QueryRow(ctx, sql, args)
 	var v int64
 	if err := row.Scan(&v); err != nil {
 		return 0, fmt.Errorf("queryscalarint64: %w", err)

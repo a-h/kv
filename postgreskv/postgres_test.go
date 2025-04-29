@@ -6,17 +6,17 @@ import (
 
 	"github.com/a-h/kv/tests"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestPostgres(t *testing.T) {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://postgres:secret@localhost:5432/postgres?sslmode=disable")
+	pool, err := pgxpool.New(ctx, "postgres://postgres:secret@localhost:5432/postgres?sslmode=disable")
 	if err != nil {
 		t.Fatalf("Unable to connect to database: %v\n", err)
 	}
-	defer conn.Close(ctx)
+	defer pool.Close()
 
-	store := New(conn)
+	store := New(pool)
 	tests.Run(t, store)
 }

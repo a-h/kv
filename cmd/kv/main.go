@@ -11,7 +11,7 @@ import (
 	"github.com/a-h/kv/rqlitekv"
 	"github.com/a-h/kv/sqlitekv"
 	"github.com/alecthomas/kong"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	rqlitehttp "github.com/rqlite/rqlite-go-http"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
@@ -44,11 +44,11 @@ func (g GlobalFlags) Store() (kv.Store, error) {
 		}
 		return rqlitekv.New(client), nil
 	case "postgres":
-		conn, err := pgx.Connect(context.Background(), g.Connection)
+		pool, err := pgxpool.New(context.Background(), g.Connection)
 		if err != nil {
 			return nil, err
 		}
-		return postgreskv.New(conn), nil
+		return postgreskv.New(pool), nil
 	default:
 		return nil, fmt.Errorf("unknown store type %q", g.Type)
 	}
