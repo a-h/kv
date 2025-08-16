@@ -40,10 +40,7 @@ func (rq *Rqlite) Init(ctx context.Context) (err error) {
 			SQL: `create table if not exists kv (key text primary key, version integer not null, value jsonb not null, created text not null) without rowid;`,
 		},
 		{
-			SQL: `create index if not exists kv_key on kv(key);`,
-		},
-		{
-			SQL: `create index if not exists kv_created on kv(created);`,
+			SQL: `create index if not exists kv_created on kv(created, key);`,
 		},
 	}
 	opts := &rqlitehttp.ExecuteOptions{
@@ -408,7 +405,7 @@ values (:key, 1, jsonb(:value), :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
-      then excluded.version + 1 
+      then kv.version + 1
 			else null -- Will fail, because version must not be null
     end,
     value = excluded.value;`
@@ -431,7 +428,7 @@ values (:key, 1, jsonb(:value), :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
-      then excluded.version + 1 
+      then kv.version + 1
       else null -- Will fail because version must not be null
     end,
     value = jsonb_patch(kv.value, excluded.value);`
@@ -488,4 +485,21 @@ func (rq *Rqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) (
 		"offset": m.Offset,
 	}
 	return s, nil
+}
+
+func (rq *Rqlite) Stream(ctx context.Context, offset, limit int) (rows []kv.Record, err error) {
+	stmts := rqlitehttp.SQLStatements{
+		{
+			SQL: `select key, version, json(value) as value, created from kv order by created, key limit :limit offset :offset;`,
+			NamedParams: map[string]any{
+				"limit":  limit,
+				"offset": offset,
+			},
+		},
+	}
+	outputs, err := rq.Query(ctx, stmts)
+	if err != nil {
+		return nil, fmt.Errorf("records: %w", err)
+	}
+	return outputs[0], nil
 }

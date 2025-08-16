@@ -158,5 +158,17 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				t.Errorf("expected created time to not change from %v, but got %v", r1.Created, r2.Created)
 			}
 		})
+		t.Run("The version number is incremented", func(t *testing.T) {
+			defer store.DeletePrefix(ctx, "*", 0, -1)
+
+			data := map[string]any{}
+
+			for v := range 10 {
+				err := store.Put(ctx, "put", int64(v), data)
+				if err != nil {
+					t.Errorf("v: %d: unexpected error putting data: %v", v, err)
+				}
+			}
+		})
 	}
 }

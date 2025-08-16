@@ -57,8 +57,7 @@ func (p *Postgres) Init(ctx context.Context) (err error) {
 			value JSONB NOT NULL,
 			created TIMESTAMPTZ NOT NULL
 		);`,
-		`CREATE INDEX IF NOT EXISTS kv_key ON kv(key);`,
-		`CREATE INDEX IF NOT EXISTS kv_created ON kv(created);`,
+		`CREATE INDEX IF NOT EXISTS kv_created ON kv(created, key);`,
 	}
 	for _, op := range ops {
 		if _, err = tx.Exec(ctx, op); err != nil {
@@ -270,13 +269,12 @@ func (p *Postgres) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]i
 	return p.Mutate(ctx, stmts)
 }
 
-func (p *Postgres) query(ctx context.Context, sql string, args pgx.NamedArgs) ([]kv.Record, error) {
+func (p *Postgres) query(ctx context.Context, sql string, args pgx.NamedArgs) (records []kv.Record, err error) {
 	rows, err := p.Pool.Query(ctx, sql, args)
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)
 	}
 	defer rows.Close()
-	var records []kv.Record
 	for rows.Next() {
 		var r kv.Record
 		if err = rows.Scan(&r.Key, &r.Version, &r.Value, &r.Created); err != nil {
@@ -290,10 +288,9 @@ func (p *Postgres) query(ctx context.Context, sql string, args pgx.NamedArgs) ([
 	return records, nil
 }
 
-func (p *Postgres) queryScalarInt64(ctx context.Context, sql string, args pgx.NamedArgs) (int64, error) {
+func (p *Postgres) queryScalarInt64(ctx context.Context, sql string, args pgx.NamedArgs) (v int64, err error) {
 	row := p.Pool.QueryRow(ctx, sql, args)
-	var v int64
-	if err := row.Scan(&v); err != nil {
+	if err = row.Scan(&v); err != nil {
 		return 0, fmt.Errorf("queryscalarint64: %w", err)
 	}
 	return v, nil
@@ -406,4 +403,19 @@ func (p *Postgres) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) 
 			"offset": m.Offset,
 		},
 	}, nil
+}
+
+func (p *Postgres) Stream(ctx context.Context, offset int, limit int) (records []kv.Record, err error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit < 0 {
+		limit = math.MaxInt
+	}
+	sql := `SELECT key, version, value, created FROM kv ORDER BY created, key LIMIT @limit OFFSET @offset;`
+	args := pgx.NamedArgs{
+		"limit":  limit,
+		"offset": offset,
+	}
+	return p.query(ctx, sql, args)
 }

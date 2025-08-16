@@ -40,8 +40,7 @@ func (s *Sqlite) Init(ctx context.Context) (err error) {
 	}
 	defer s.Pool.Put(conn)
 	script := `create table if not exists kv (key text primary key, version integer not null, value jsonb not null, created text not null) without rowid;
-create index if not exists kv_key on kv(key);
-create index if not exists kv_created on kv(created);`
+create index if not exists kv_created on kv(created, key);`
 	return sqlitex.ExecScript(conn, script)
 }
 
@@ -344,7 +343,7 @@ values (:key, 1, jsonb(:value), :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
-      then excluded.version + 1 
+      then kv.version + 1
 			else null -- Will fail, because version must not be null
     end,
     value = excluded.value;`
@@ -367,7 +366,7 @@ values (:key, 1, jsonb(:value), :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
-      then excluded.version + 1 
+      then kv.version + 1
       else null -- Will fail because version must not be null
     end,
     value = jsonb_patch(kv.value, excluded.value);`
@@ -417,4 +416,17 @@ func (s *Sqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) (s
 		":offset": m.Offset,
 	}
 	return stmt, nil
+}
+
+func (s *Sqlite) Stream(ctx context.Context, offset int, limit int) (records []kv.Record, err error) {
+	sql := `select key, version, json(value) as value, created from kv order by created, key limit :limit offset :offset;`
+	args := map[string]any{
+		":limit":  limit,
+		":offset": offset,
+	}
+	records, err = s.Query(ctx, sql, args)
+	if err != nil {
+		return nil, fmt.Errorf("records: %w", err)
+	}
+	return records, nil
 }

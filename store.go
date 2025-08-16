@@ -92,6 +92,9 @@ type Store interface {
 	//
 	// Use the Put, Patch, PutPatches, Delete, DeleteKeys, DeletePrefix and DeleteRange functions to populate the mutations argument.
 	MutateAll(ctx context.Context, mutations ...Mutation) (rowsAffected []int64, err error)
+	// Stream returns all records in the store, ordered by created date, key.
+	// It is used to follow changes to the store.
+	Stream(ctx context.Context, offset, limit int) (rows []Record, err error)
 	// SetNow sets the function to use for getting the current time. This is used for testing purposes.
 	SetNow(now func() time.Time)
 }
