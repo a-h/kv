@@ -51,7 +51,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 		}
 
 		t.Run("Calling get multiple times without committing maintains position", func(t *testing.T) {
-			consumer, err := kv.NewConsumer(ctx, store, "consumer")
+			consumer, err := kv.NewStreamConsumer(ctx, store, "consumer")
 			if err != nil {
 				t.Fatalf("unexpected error creating consumer: %v", err)
 			}
@@ -72,7 +72,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can iterate through records", func(t *testing.T) {
-			consumer, err := kv.NewConsumer(ctx, store, "consumer")
+			consumer, err := kv.NewStreamConsumer(ctx, store, "consumer")
 			if err != nil {
 				t.Fatalf("unexpected error creating consumer: %v", err)
 			}
@@ -107,7 +107,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can reload consumer state", func(t *testing.T) {
-			consumer, err := kv.NewConsumer(ctx, store, "consumer")
+			consumer, err := kv.NewStreamConsumer(ctx, store, "consumer")
 			if err != nil {
 				t.Fatalf("unexpected error creating consumer: %v", err)
 			}
@@ -122,7 +122,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 
 			// Reload the consumer.
-			consumer, err = kv.NewConsumer(ctx, store, "consumer")
+			consumer, err = kv.NewStreamConsumer(ctx, store, "consumer")
 			if err != nil {
 				t.Fatalf("unexpected error reloading consumer: %v", err)
 			}

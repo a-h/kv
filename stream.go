@@ -6,38 +6,40 @@ import (
 	"time"
 )
 
-func NewConsumer(ctx context.Context, store Store, name string) (s *Consumer, err error) {
-	s = &Consumer{
+func NewStreamConsumer(ctx context.Context, store Store, name string) (s *StreamConsumer, err error) {
+	s = &StreamConsumer{
 		Store: store,
 		key:   fmt.Sprintf("github.com/a-h/kv/stream/%s", name),
+		Name:  name,
 		Seq:   -1,
 		Limit: 10,
 	}
-	var sr streamRecord
-	r, _, err := s.Store.Get(ctx, s.key, &sr)
+	var cs StreamConsumerStatus
+	r, _, err := s.Store.Get(ctx, s.key, &cs)
 	if err != nil {
 		return nil, fmt.Errorf("stream: failed to get consumer record: %w", err)
 	}
 	s.Version = r.Version
-	s.Seq = sr.Seq
+	s.Seq = cs.Seq
 	return s, nil
 }
 
-type streamRecord struct {
-	Seq int `json:"seq"`
-	// LastUpdated is the last time the consumer record was updated.
+type StreamConsumerStatus struct {
+	Name        string `json:"name"`
+	Seq         int    `json:"seq"`
 	LastUpdated string `json:"lastUpdated"`
 }
 
-type Consumer struct {
+type StreamConsumer struct {
 	Store Store
 	key   string
+	Name  string
 	// Seq is the read position.
 	Seq int
-	// lastMaxSeq is the last maximum sequence number seen by the consumer.
+	// LastSeq is the last maximum sequence number seen by the consumer.
 	// This is updated by Get, and used by Commit to ensure that the Consumer
 	// does not commit a record that has already been processed.
-	lastMaxSeq int
+	LastSeq int
 	// Version of the streamRecord, used to apply optimistic concurrency control to the consumer record.
 	Version int
 	// Limit is the maximum number of records to return in a single Get call.
@@ -45,7 +47,7 @@ type Consumer struct {
 }
 
 // Get a batch of records.
-func (s *Consumer) Get(ctx context.Context) (records []StreamRecord, err error) {
+func (s *StreamConsumer) Get(ctx context.Context) (records []StreamRecord, err error) {
 	if s.Seq < 0 {
 		return nil, fmt.Errorf("stream: offset is not set")
 	}
@@ -54,31 +56,41 @@ func (s *Consumer) Get(ctx context.Context) (records []StreamRecord, err error) 
 		return nil, fmt.Errorf("stream: failed to get records: %w", err)
 	}
 	if len(records) > 0 {
-		s.lastMaxSeq = records[len(records)-1].Seq
+		s.LastSeq = records[len(records)-1].Seq
 	}
 	return records, nil
 }
 
 // Commit acknowledges that the records returned by Get have been processed.
-func (s *Consumer) Commit(ctx context.Context) (err error) {
-	if s.lastMaxSeq < 0 {
-		return fmt.Errorf("stream: lastMaxSeq is not set, call Get before Commit")
+func (s *StreamConsumer) Commit(ctx context.Context) (err error) {
+	if s.LastSeq < 0 {
+		return fmt.Errorf("stream: LastSeq is not set, call Get before Commit or set LastSeq explicitly")
 	}
-	sr := streamRecord{
-		Seq:         s.lastMaxSeq + 1,
+	cs := StreamConsumerStatus{
+		Name:        s.Name,
+		Seq:         s.LastSeq + 1,
 		LastUpdated: time.Now().UTC().Format(time.RFC3339),
 	}
-	err = s.Store.Put(ctx, s.key, s.Version, sr)
+	err = s.Store.Put(ctx, s.key, s.Version, cs)
 	if err != nil {
 		return fmt.Errorf("stream: failed to commit offset %d: %w", s.Seq, err)
 	}
 	s.Version++
-	s.Seq = s.lastMaxSeq + 1
+	s.Seq = s.LastSeq + 1
 	return nil
 }
 
 // Delete the consumer record from the store.
-func (s *Consumer) Delete(ctx context.Context) (err error) {
+func (s *StreamConsumer) Delete(ctx context.Context) (err error) {
 	_, err = s.Store.Delete(ctx, s.key)
 	return err
+}
+
+// Status returns the current status of the consumer.
+func (s *StreamConsumer) Status(ctx context.Context) (cs StreamConsumerStatus, ok bool, err error) {
+	_, ok, err = s.Store.Get(ctx, s.key, &cs)
+	if err != nil {
+		return cs, false, fmt.Errorf("stream: failed to get consumer status: %w", err)
+	}
+	return cs, ok, nil
 }
