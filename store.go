@@ -4,15 +4,36 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"time"
 )
+
+func init() {
+	if math.MaxInt < math.MaxInt64 {
+		panic("math.MaxInt is less than math.MaxInt64, this is not supported")
+	}
+}
 
 // Record is the record stored in the store prior to being unmarshaled.
 type Record struct {
 	Key     string    `json:"key"`
-	Version int64     `json:"version"`
+	Version int       `json:"version"`
 	Value   []byte    `json:"value"`
 	Created time.Time `json:"created"`
+}
+
+type Action string
+
+const (
+	ActionCreate Action = "create"
+	ActionUpdate Action = "update"
+	ActionDelete Action = "delete"
+)
+
+type StreamRecord struct {
+	Seq    int    `json:"seq"`
+	Action Action `json:"action"`
+	Record Record
 }
 
 var ErrVersionMismatch = errors.New("version mismatch")
@@ -29,9 +50,18 @@ func ValuesOf[T any](records []Record) (values []T, err error) {
 	return values, nil
 }
 
+// ValueOf returns the value of a single record, unmarshaled into the given type.
+func ValueOf[T any](record Record) (value T, err error) {
+	err = json.Unmarshal(record.Value, &value)
+	if err != nil {
+		return value, err
+	}
+	return value, nil
+}
+
 type RecordOf[T any] struct {
 	Key     string    `json:"key"`
-	Version int64     `json:"version"`
+	Version int       `json:"version"`
 	Value   T         `json:"value"`
 	Created time.Time `json:"created"`
 }
@@ -73,28 +103,32 @@ type Store interface {
 	// If the version is -1, it will skip the version check.
 	//
 	// If the version is 0, it will only insert the key if it does not already exist.
-	Put(ctx context.Context, key string, version int64, value any) (err error)
+	Put(ctx context.Context, key string, version int, value any) (err error)
 	// Delete deletes keys from the store. If the key does not exist, no error is returned.
-	Delete(ctx context.Context, keys ...string) (rowsAffected int64, err error)
+	Delete(ctx context.Context, keys ...string) (rowsAffected int, err error)
 	// DeletePrefix deletes all keys with a given prefix from the store.
-	DeletePrefix(ctx context.Context, prefix string, offset, limit int) (rowsAffected int64, err error)
+	DeletePrefix(ctx context.Context, prefix string, offset, limit int) (rowsAffected int, err error)
 	// DeleteRange deletes all keys between the key from (inclusive) and to (exclusive).
-	DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int64, err error)
+	DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int, err error)
 	// Count returns the number of keys in the store.
-	Count(ctx context.Context) (n int64, err error)
+	Count(ctx context.Context) (n int, err error)
 	// CountPrefix returns the number of keys in the store with a given prefix.
-	CountPrefix(ctx context.Context, prefix string) (count int64, err error)
+	CountPrefix(ctx context.Context, prefix string) (count int, err error)
 	// CountRange returns the number of keys in the store between the key from (inclusive) and to (exclusive).
-	CountRange(ctx context.Context, from, to string) (count int64, err error)
+	CountRange(ctx context.Context, from, to string) (count int, err error)
 	// Patch patches a key in the store. The patch is a JSON merge patch (RFC 7396), so would look something like map[string]any{"key": "value"}.
-	Patch(ctx context.Context, key string, version int64, patch any) (err error)
+	Patch(ctx context.Context, key string, version int, patch any) (err error)
 	// MutateAll runs the mutations against the store, as a single transaction.
 	//
 	// Use the Put, Patch, PutPatches, Delete, DeleteKeys, DeletePrefix and DeleteRange functions to populate the mutations argument.
-	MutateAll(ctx context.Context, mutations ...Mutation) (rowsAffected []int64, err error)
-	// Stream returns all records in the store, ordered by created date, key.
+	MutateAll(ctx context.Context, mutations ...Mutation) (rowsAffected []int, err error)
+	// Stream returns all mutations that have happened, in the order they were applied.
 	// It is used to follow changes to the store.
-	Stream(ctx context.Context, offset, limit int) (rows []Record, err error)
+	Stream(ctx context.Context, seq int, limit int) (rows []StreamRecord, err error)
+	// StreamSeq returns the current latest sequence number of the stream.
+	StreamSeq(ctx context.Context) (seq int, err error)
+	// StreamTrim trims the stream to the given sequence number.
+	StreamTrim(ctx context.Context, seq int) (err error)
 	// SetNow sets the function to use for getting the current time. This is used for testing purposes.
 	SetNow(now func() time.Time)
 }
@@ -104,11 +138,11 @@ type Mutation interface {
 }
 
 type MutationResult struct {
-	RowsAffected int64
+	RowsAffected int
 	Err          error
 }
 
-func Put(key string, version int64, value any) PutMutation {
+func Put(key string, version int, value any) PutMutation {
 	return PutMutation{
 		Key:     key,
 		Version: version,
@@ -118,13 +152,13 @@ func Put(key string, version int64, value any) PutMutation {
 
 type PutMutation struct {
 	Key     string
-	Version int64
+	Version int
 	Value   any
 }
 
 func (PutMutation) isMutation() {}
 
-func Patch(key string, version int64, value any) PatchMutation {
+func Patch(key string, version int, value any) PatchMutation {
 	return PatchMutation{
 		Key:     key,
 		Version: version,
@@ -134,7 +168,7 @@ func Patch(key string, version int64, value any) PatchMutation {
 
 type PatchMutation struct {
 	Key     string
-	Version int64
+	Version int
 	Value   any
 }
 

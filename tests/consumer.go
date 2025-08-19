@@ -10,7 +10,12 @@ import (
 
 func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
+		if err := store.StreamTrim(ctx, -1); err != nil {
+			t.Fatalf("could not trim stream prior to running test: %v", err)
+		}
+
 		defer store.DeletePrefix(ctx, "*", 0, -1)
+		defer store.StreamTrim(ctx, -1)
 
 		expected := []Person{
 			{
@@ -61,8 +66,8 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				if len(records) != 1 {
 					t.Fatalf("iteration %d: expected 1 record, got %d", i, len(records))
 				}
-				if records[0].Key != "consumer/frank" {
-					t.Fatalf("iteration %d: expected key 'consumer/frank', got %s", i, records[0].Key)
+				if records[0].Record.Key != "consumer/frank" {
+					t.Fatalf("iteration %d: expected key 'consumer/frank', got %s", i, records[0].Record.Key)
 				}
 			}
 		})
@@ -82,7 +87,14 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				if len(records) != 1 {
 					t.Fatalf("iteration %d: expected 1 record, got %d", i, len(records))
 				}
-				values, err := kv.ValuesOf[Person](records)
+				var values []Person
+				for _, sr := range records {
+					person, err := kv.ValueOf[Person](sr.Record)
+					if err != nil {
+						t.Fatalf("iteration %d: unexpected error getting value: %v", i, err)
+					}
+					values = append(values, person)
+				}
 				if err != nil {
 					t.Fatalf("iteration %d: unexpected error getting values: %v", i, err)
 				}
@@ -114,30 +126,14 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error reloading consumer: %v", err)
 			}
-			if consumer.Offset != len(expected) {
-				t.Errorf("expected consumer offset to be %d, got %d", len(expected), consumer.Offset)
-			}
-			records, err := consumer.Get(ctx)
+			srs, err := consumer.Get(ctx)
 			if err != nil {
 				t.Fatalf("unexpected error getting data after reload: %v", err)
 			}
-			// Filter out any stream records.
-			records = filter(records, func(r kv.Record) bool {
-				return !strings.HasPrefix(r.Key, "github.com/a-h/kv/stream/")
-			})
-			if len(records) != 0 {
-				t.Errorf("record[0]: %#v", string(records[0].Value))
-				t.Fatalf("expected no records after reload, got %d", len(records))
+			if len(srs) != 0 {
+				t.Errorf("record[0]: %#v", string(srs[0].Record.Value))
+				t.Fatalf("expected no records after reload, got %d", len(srs))
 			}
 		})
 	}
-}
-
-func filter(records []kv.Record, f func(r kv.Record) bool) (filtered []kv.Record) {
-	for _, r := range records {
-		if f(r) {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
 }

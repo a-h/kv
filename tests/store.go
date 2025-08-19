@@ -125,7 +125,7 @@ func Run(t *testing.T, store kv.Store) {
 	}
 }
 
-func expectRowsAffectedEqual(t *testing.T, expected, actual []int64) {
+func expectRowsAffectedEqual(t *testing.T, expected, actual []int) {
 	if len(expected) != len(actual) {
 		t.Errorf("expected %d rows affected records, got %d", len(expected), len(actual))
 	}

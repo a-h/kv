@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	_ "embed"
+
 	"github.com/a-h/kv"
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
@@ -33,15 +35,16 @@ func (s *Sqlite) SetNow(now func() time.Time) {
 	s.Now = now
 }
 
+//go:embed init.sql
+var initSQL string
+
 func (s *Sqlite) Init(ctx context.Context) (err error) {
 	conn, err := s.Pool.Take(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.Pool.Put(conn)
-	script := `create table if not exists kv (key text primary key, version integer not null, value jsonb not null, created text not null) without rowid;
-create index if not exists kv_created on kv(created, key);`
-	return sqlitex.ExecScript(conn, script)
+	return sqlitex.ExecScript(conn, initSQL)
 }
 
 func (s *Sqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
@@ -103,7 +106,7 @@ func (s *Sqlite) List(ctx context.Context, start, limit int) (records []kv.Recor
 	return records, nil
 }
 
-func (s *Sqlite) Put(ctx context.Context, key string, version int64, value any) (err error) {
+func (s *Sqlite) Put(ctx context.Context, key string, version int, value any) (err error) {
 	stmt, err := s.createPutMutationStatement(kv.PutMutation{Key: key, Version: version, Value: value})
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
@@ -124,7 +127,7 @@ func (s *Sqlite) Put(ctx context.Context, key string, version int64, value any) 
 	return nil
 }
 
-func (s *Sqlite) Delete(ctx context.Context, keys ...string) (rowsAffected int64, err error) {
+func (s *Sqlite) Delete(ctx context.Context, keys ...string) (rowsAffected int, err error) {
 	stmt, err := s.createDeleteMutationStatement(kv.DeleteMutation{Keys: keys})
 	if err != nil {
 		return 0, fmt.Errorf("delete: %w", err)
@@ -146,7 +149,7 @@ func (s *Sqlite) Delete(ctx context.Context, keys ...string) (rowsAffected int64
 // CTEs are not supported with a join, so the simplest way to delete a prefix
 // is to use a subquery.
 
-func (s *Sqlite) DeletePrefix(ctx context.Context, prefix string, offset, limit int) (rowsAffected int64, err error) {
+func (s *Sqlite) DeletePrefix(ctx context.Context, prefix string, offset, limit int) (rowsAffected int, err error) {
 	stmt, err := s.createDeletePrefixMutationStatement(kv.DeletePrefixMutation{Prefix: prefix, Offset: offset, Limit: limit})
 	if err != nil {
 		return 0, fmt.Errorf("deleteprefix: %w", err)
@@ -161,7 +164,7 @@ func (s *Sqlite) DeletePrefix(ctx context.Context, prefix string, offset, limit 
 	return allRowsAffected[0], nil
 }
 
-func (s *Sqlite) DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int64, err error) {
+func (s *Sqlite) DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int, err error) {
 	stmt, err := s.createDeleteRangeMutationStatement(kv.DeleteRangeMutation{From: from, To: to, Offset: offset, Limit: limit})
 	if err != nil {
 		return 0, fmt.Errorf("deleterange: %w", err)
@@ -176,12 +179,12 @@ func (s *Sqlite) DeleteRange(ctx context.Context, from, to string, offset, limit
 	return allRowsAffected[0], nil
 }
 
-func (s *Sqlite) Count(ctx context.Context) (n int64, err error) {
+func (s *Sqlite) Count(ctx context.Context) (n int, err error) {
 	sql := `select count(*) from kv;`
 	return s.QueryScalarInt64(ctx, sql, nil)
 }
 
-func (s *Sqlite) CountPrefix(ctx context.Context, prefix string) (count int64, err error) {
+func (s *Sqlite) CountPrefix(ctx context.Context, prefix string) (count int, err error) {
 	sql := `select count(*) from kv where key like :prefix;`
 	args := map[string]any{
 		":prefix": prefix + "%",
@@ -189,7 +192,7 @@ func (s *Sqlite) CountPrefix(ctx context.Context, prefix string) (count int64, e
 	return s.QueryScalarInt64(ctx, sql, args)
 }
 
-func (s *Sqlite) CountRange(ctx context.Context, from, to string) (count int64, err error) {
+func (s *Sqlite) CountRange(ctx context.Context, from, to string) (count int, err error) {
 	sql := `select count(*) from kv where key >= :from and key < :to;`
 	args := map[string]any{
 		":from": from,
@@ -198,7 +201,7 @@ func (s *Sqlite) CountRange(ctx context.Context, from, to string) (count int64, 
 	return s.QueryScalarInt64(ctx, sql, args)
 }
 
-func (s *Sqlite) Patch(ctx context.Context, key string, version int64, patch any) (err error) {
+func (s *Sqlite) Patch(ctx context.Context, key string, version int, patch any) (err error) {
 	stmt, err := s.createPatchMutationStatement(kv.PatchMutation{Key: key, Version: version, Value: patch})
 	if err != nil {
 		return fmt.Errorf("patch: %w", err)
@@ -232,7 +235,7 @@ func (s *Sqlite) Query(ctx context.Context, sql string, args map[string]any) (ro
 			}
 			r := kv.Record{
 				Key:     stmt.GetText("key"),
-				Version: stmt.GetInt64("version"),
+				Version: int(stmt.GetInt64("version")),
 				Value:   valueBytes,
 				Created: created,
 			}
@@ -246,7 +249,44 @@ func (s *Sqlite) Query(ctx context.Context, sql string, args map[string]any) (ro
 	return rows, nil
 }
 
-func (s *Sqlite) QueryScalarInt64(ctx context.Context, sql string, params map[string]any) (v int64, err error) {
+func (s *Sqlite) QueryStream(ctx context.Context, sql string, args map[string]any) (rows []kv.StreamRecord, err error) {
+	conn, err := s.Pool.Take(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer s.Pool.Put(conn)
+	opts := &sqlitex.ExecOptions{
+		Named: args,
+		ResultFunc: func(stmt *sqlite.Stmt) (err error) {
+			valueBytes, err := io.ReadAll(stmt.GetReader("value"))
+			if err != nil {
+				return fmt.Errorf("query: error reading value: %w", err)
+			}
+			created, err := time.Parse(time.RFC3339Nano, stmt.GetText("created"))
+			if err != nil {
+				return fmt.Errorf("query: error parsing created time: %w", err)
+			}
+			r := kv.StreamRecord{
+				Seq:    int(stmt.GetInt64("seq")),
+				Action: kv.Action(stmt.GetText("action")),
+				Record: kv.Record{
+					Key:     stmt.GetText("key"),
+					Version: int(stmt.GetInt64("version")),
+					Value:   valueBytes,
+					Created: created,
+				},
+			}
+			rows = append(rows, r)
+			return nil
+		},
+	}
+	if err = sqlitex.Execute(conn, sql, opts); err != nil {
+		return nil, fmt.Errorf("query: error in query: %w", err)
+	}
+	return rows, nil
+}
+
+func (s *Sqlite) QueryScalarInt64(ctx context.Context, sql string, params map[string]any) (v int, err error) {
 	conn, err := s.Pool.Take(ctx)
 	if err != nil {
 		return 0, err
@@ -258,7 +298,7 @@ func (s *Sqlite) QueryScalarInt64(ctx context.Context, sql string, params map[st
 			if stmt.ColumnType(0) != sqlite.TypeInteger {
 				return fmt.Errorf("expected integer, got %s", stmt.ColumnType(0).String())
 			}
-			v = stmt.ColumnInt64(0)
+			v = int(stmt.ColumnInt64(0))
 			return nil
 		},
 	}
@@ -273,7 +313,7 @@ type SQLStatement struct {
 	NamedParams map[string]any
 }
 
-func (s *Sqlite) Mutate(ctx context.Context, stmts []SQLStatement) (rowsAffected []int64, err error) {
+func (s *Sqlite) Mutate(ctx context.Context, stmts []SQLStatement) (rowsAffected []int, err error) {
 	conn, err := s.Pool.Take(ctx)
 	if err != nil {
 		return nil, err
@@ -281,7 +321,7 @@ func (s *Sqlite) Mutate(ctx context.Context, stmts []SQLStatement) (rowsAffected
 	defer s.Pool.Put(conn)
 	defer sqlitex.Transaction(conn)(&err)
 
-	rowsAffected = make([]int64, len(stmts))
+	rowsAffected = make([]int, len(stmts))
 	errs := make([]error, len(stmts))
 
 	for i, stmt := range stmts {
@@ -295,18 +335,18 @@ func (s *Sqlite) Mutate(ctx context.Context, stmts []SQLStatement) (rowsAffected
 			errs[i] = fmt.Errorf("mutate: index %d: %w", i, execErr)
 			continue
 		}
-		rowsAffected[i] = int64(conn.Changes())
+		rowsAffected[i] = conn.Changes()
 	}
 
 	joinedErr := errors.Join(errs...)
 	if joinedErr != nil {
 		err = joinedErr
-		rowsAffected = make([]int64, len(stmts))
+		rowsAffected = make([]int, len(stmts))
 	}
 	return rowsAffected, err
 }
 
-func (s *Sqlite) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]int64, error) {
+func (s *Sqlite) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]int, error) {
 	stmts := make([]SQLStatement, len(mutations))
 	for i, m := range mutations {
 		var stmt SQLStatement
@@ -418,15 +458,42 @@ func (s *Sqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) (s
 	return stmt, nil
 }
 
-func (s *Sqlite) Stream(ctx context.Context, offset int, limit int) (records []kv.Record, err error) {
-	sql := `select key, version, json(value) as value, created from kv order by created, key limit :limit offset :offset;`
+func (s *Sqlite) Stream(ctx context.Context, seq int, limit int) (records []kv.StreamRecord, err error) {
+	sql := `select seq, action, key, version, json(value) as value, created from stream where seq >= :seq limit :limit;`
 	args := map[string]any{
-		":limit":  limit,
-		":offset": offset,
+		":seq":   seq,
+		":limit": limit,
 	}
-	records, err = s.Query(ctx, sql, args)
+	records, err = s.QueryStream(ctx, sql, args)
 	if err != nil {
-		return nil, fmt.Errorf("records: %w", err)
+		return nil, fmt.Errorf("stream: %w", err)
 	}
 	return records, nil
+}
+
+var deleteStreamAll = SQLStatement{
+	SQL:         `delete from stream;`,
+	NamedParams: map[string]any{},
+}
+
+func (s *Sqlite) StreamSeq(ctx context.Context) (seq int, err error) {
+	sql := `select coalesce(seq, 0) from sqlite_sequence where name = 'stream';`
+	return s.QueryScalarInt64(ctx, sql, nil)
+}
+
+func (s *Sqlite) StreamTrim(ctx context.Context, seq int) (err error) {
+	stmt := SQLStatement{
+		SQL: `delete from stream where seq <= :seq;`,
+		NamedParams: map[string]any{
+			":seq": seq,
+		},
+	}
+	if seq < 0 {
+		stmt = deleteStreamAll
+	}
+	_, err = s.Mutate(ctx, []SQLStatement{stmt})
+	if err != nil {
+		return fmt.Errorf("streamtrim: %w", err)
+	}
+	return nil
 }

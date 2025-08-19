@@ -164,7 +164,7 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			data := map[string]any{}
 
 			for v := range 10 {
-				err := store.Put(ctx, "put", int64(v), data)
+				err := store.Put(ctx, "put", v, data)
 				if err != nil {
 					t.Errorf("v: %d: unexpected error putting data: %v", v, err)
 				}

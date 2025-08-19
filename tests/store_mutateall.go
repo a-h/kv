@@ -17,7 +17,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 		tests := []struct {
 			name                  string
 			operations            []kv.Mutation
-			expectedRowsAffected  []int64
+			expectedRowsAffected  []int
 			expectedRemainingKeys []string
 			expectedErr           error
 		}{
@@ -26,7 +26,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				operations: []kv.Mutation{
 					kv.Delete("mutateall-1"), kv.Delete("mutateall-2"),
 				},
-				expectedRowsAffected:  []int64{1, 1},
+				expectedRowsAffected:  []int{1, 1},
 				expectedRemainingKeys: nil,
 			},
 			{
@@ -34,7 +34,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				operations: []kv.Mutation{
 					kv.Delete("mutateall-1", "mutateall-2"),
 				},
-				expectedRowsAffected:  []int64{2},
+				expectedRowsAffected:  []int{2},
 				expectedRemainingKeys: nil,
 			},
 			{
@@ -42,7 +42,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				operations: []kv.Mutation{
 					kv.DeletePrefix("mutate", 0, 1),
 				},
-				expectedRowsAffected:  []int64{1},
+				expectedRowsAffected:  []int{1},
 				expectedRemainingKeys: []string{"mutateall-2"},
 			},
 			{
@@ -50,7 +50,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				operations: []kv.Mutation{
 					kv.DeleteRange("mutateall-1", "mutateall-2", 0, 100),
 				},
-				expectedRowsAffected:  []int64{1},
+				expectedRowsAffected:  []int{1},
 				expectedRemainingKeys: []string{"mutateall-2"},
 			},
 			{
@@ -59,7 +59,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 					kv.Delete("mutateall-1"), kv.Delete("mutateall-2"),
 					kv.Patch("patch-1", -1, map[string]any{"key": "value"}),
 				},
-				expectedRowsAffected:  []int64{1, 1, 1},
+				expectedRowsAffected:  []int{1, 1, 1},
 				expectedRemainingKeys: []string{"patch-1"},
 			},
 			{
@@ -68,7 +68,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 					kv.Put("put1", -1, nil),
 					kv.Patch("patch1", -1, nil),
 				},
-				expectedRowsAffected: []int64{1, 1},
+				expectedRowsAffected: []int{1, 1},
 				expectedRemainingKeys: []string{
 					"mutateall-1", "mutateall-2",
 					"patch1", "put1",
@@ -80,7 +80,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 					kv.Put("mutateall-1", 2, nil), // Version mismatch.
 					kv.Patch("patch1", -1, nil),   // Should not be applied.
 				},
-				expectedRowsAffected: []int64{0, 0},
+				expectedRowsAffected: []int{0, 0},
 				expectedRemainingKeys: []string{
 					"mutateall-1", "mutateall-2",
 				},
@@ -99,7 +99,7 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				if err != nil {
 					t.Fatalf("unexpected error putting data: %v", err)
 				}
-				expectRowsAffectedEqual(t, []int64{1, 1}, rowsAffected)
+				expectRowsAffectedEqual(t, []int{1, 1}, rowsAffected)
 
 				rowsAffected, err = store.MutateAll(ctx, test.operations...)
 				if err != nil && test.expectedErr == nil {
@@ -155,7 +155,7 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error putting data: %v", err)
 			}
-			expectRowsAffectedEqual(t, []int64{1, 1, 1}, rowsAffected)
+			expectRowsAffectedEqual(t, []int{1, 1, 1}, rowsAffected)
 
 			records, err := store.List(ctx, 0, 100)
 			if err != nil {
@@ -186,7 +186,7 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error putting data: %v", err)
 			}
-			expectRowsAffectedEqual(t, []int64{1}, rowsAffected)
+			expectRowsAffectedEqual(t, []int{1}, rowsAffected)
 
 			var overwritten Person
 			_, ok, err := store.Get(ctx, "put", &overwritten)
@@ -217,7 +217,7 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error patching data: %v", err)
 			}
-			expectRowsAffectedEqual(t, []int64{1}, rowsAffected)
+			expectRowsAffectedEqual(t, []int{1}, rowsAffected)
 
 			var overwritten Person
 			_, ok, err := store.Get(ctx, "patch", &overwritten)
@@ -244,7 +244,7 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err == nil {
 				t.Error("expected error putting data: got nil")
 			}
-			expectRowsAffectedEqual(t, []int64{0}, rowsAffected)
+			expectRowsAffectedEqual(t, []int{0}, rowsAffected)
 		})
 		t.Run("Can overwrite existing data with specified version", func(t *testing.T) {
 			defer store.DeletePrefix(ctx, "*", 0, -1)
@@ -262,7 +262,7 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error overwriting data: %v", err)
 			}
-			expectRowsAffectedEqual(t, []int64{1}, rowsAffected)
+			expectRowsAffectedEqual(t, []int{1}, rowsAffected)
 
 			var actual Person
 			r, ok, err := store.Get(ctx, "put", &actual)
@@ -306,7 +306,7 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error putting data: %v", err)
 			}
-			expectRowsAffectedEqual(t, []int64{1, 1, 1}, rowsAffected)
+			expectRowsAffectedEqual(t, []int{1, 1, 1}, rowsAffected)
 
 			records, err := store.List(ctx, 0, 100)
 			if err != nil {
@@ -359,7 +359,7 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error putting data: %v", err)
 			}
-			expectRowsAffectedEqual(t, []int64{1, 1, 1}, rowsAffected)
+			expectRowsAffectedEqual(t, []int{1, 1, 1}, rowsAffected)
 
 			// Updates.
 			updates := []kv.Mutation{

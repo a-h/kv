@@ -9,12 +9,12 @@ import (
 	"github.com/a-h/kv"
 )
 
-type RecordsCommand struct {
+type StreamCommand struct {
 	Offset int `arg:"-o,--offset" help:"Range offset." default:"0"`
 	Limit  int `arg:"-l,--limit" help:"The maximum number of records to return, or -1 for no limit." default:"1000"`
 }
 
-func (c *RecordsCommand) Run(ctx context.Context, g GlobalFlags) error {
+func (c *StreamCommand) Run(ctx context.Context, g GlobalFlags) error {
 	store, err := g.Store()
 	if err != nil {
 		return fmt.Errorf("failed to create store: %w", err)
@@ -25,14 +25,28 @@ func (c *RecordsCommand) Run(ctx context.Context, g GlobalFlags) error {
 		return fmt.Errorf("failed to list data: %w", err)
 	}
 
-	records, err := kv.RecordsOf[map[string]any](data)
-	if err != nil {
-		return fmt.Errorf("failed to convert records: %w", err)
+	type streamRecordDisplay struct {
+		Seq    int                         `json:"seq"`
+		Action kv.Action                   `json:"action"`
+		Record kv.RecordOf[map[string]any] `json:"record"`
+	}
+	var displayRecords []streamRecordDisplay
+	for _, record := range data {
+		typedRecords, err := kv.RecordsOf[map[string]any]([]kv.Record{record.Record})
+		if err != nil {
+			return fmt.Errorf("failed to convert record: %w", err)
+		}
+		srd := streamRecordDisplay{
+			Seq:    record.Seq,
+			Action: record.Action,
+			Record: typedRecords[0],
+		}
+		displayRecords = append(displayRecords, srd)
 	}
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	if err = enc.Encode(records); err != nil {
+	if err = enc.Encode(displayRecords); err != nil {
 		return err
 	}
 

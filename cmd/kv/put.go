@@ -9,7 +9,7 @@ import (
 
 type PutCommand struct {
 	Key     string `arg:"" help:"Key name" required:""`
-	Version int64  `help:"The version of the key to overwrite, or -1 if no version check is required." default:"-1"`
+	Version int    `help:"The version of the key to overwrite, or -1 if no version check is required." default:"-1"`
 }
 
 func (c *PutCommand) Run(ctx context.Context, g GlobalFlags) error {

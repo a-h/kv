@@ -239,24 +239,6 @@ MutateAll(ctx context.Context, mutations ...db.Mutation) (rowsAffected []int64, 
 
 ## Tasks
 
-### db-run
-
-You don't need to run rqlite. You can use sqlite which works directly with the file system, however, if you want a distributed database, you can use rqlite. This is useful if you have a load balanced web application, or want to share data between multiple services.
-
-interactive: true
-
-```bash
-rqlited -auth=auth.json ~/kv.db
-```
-
-### db-shell
-
-interactive: true
-
-```bash
-rqlite --user='admin:secret'
-```
-
 ### build
 
 ```bash
@@ -324,8 +306,25 @@ crane push /tmp/kv.tar ${CONTAINER_REGISTRY}/kv:v0.0.1
 docker run -v "$PWD/auth.json:/mnt/rqlite/auth.json" -v "$PWD/.rqlite:/mnt/data" -p 4001:4001 -p 4002:4002 -p 4003:4003 rqlite/rqlite:latest
 ```
 
+### rqlite-db-shell
+
+interactive: true
+
+```bash
+rqlite --user='admin:secret'
+```
+
 ### docker-run-postgres
 
 ```bash
 docker run -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=testdb -p 5432:5432 postgres:latest
+```
+
+### postgres-db-shell
+
+Env: PGPASSWORD=secret
+interactive: true
+
+```bash
+pgcli -h localhost -u postgres -d postgres
 ```

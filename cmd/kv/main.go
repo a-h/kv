@@ -70,7 +70,7 @@ type CLI struct {
 	CountPrefix    CountPrefixCommand    `cmd:"count-prefix" help:"Count the number of keys with a given prefix."`
 	CountRange     CountRangeCommand     `cmd:"count-range" help:"Count the number of keys in a range."`
 	Patch          PatchCommand          `cmd:"patch" help:"Patch a key."`
-	Records        RecordsCommand        `cmd:"records" help:"List records, ordered by created date."`
+	Stream         StreamCommand         `cmd:"stream" help:"List changes stream."`
 	BenchmarkGet   BenchmarkGetCommand   `cmd:"benchmark-get" help:"Benchmark getting records."`
 	BenchmarkPut   BenchmarkPutCommand   `cmd:"benchmark-put" help:"Benchmark putting records."`
 	BenchmarkPatch BenchmarkPatchCommand `cmd:"benchmark-patch" help:"Benchmark patching records."`

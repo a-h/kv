@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	_ "embed"
+
 	"github.com/a-h/kv"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,6 +40,9 @@ func (p *Postgres) SetNow(now func() time.Time) {
 	p.Now = now
 }
 
+//go:embed init.sql
+var initSQL string
+
 func (p *Postgres) Init(ctx context.Context) (err error) {
 	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
@@ -50,21 +55,12 @@ func (p *Postgres) Init(ctx context.Context) (err error) {
 			err = tx.Commit(ctx)
 		}
 	}()
-	ops := []string{
-		`CREATE TABLE IF NOT EXISTS kv (
-			key TEXT PRIMARY KEY,
-			version INTEGER NOT NULL,
-			value JSONB NOT NULL,
-			created TIMESTAMPTZ NOT NULL
-		);`,
-		`CREATE INDEX IF NOT EXISTS kv_created ON kv(created, key);`,
+
+	if _, err = tx.Exec(ctx, initSQL); err != nil {
+		return fmt.Errorf("init: exec: %w", err)
 	}
-	for _, op := range ops {
-		if _, err = tx.Exec(ctx, op); err != nil {
-			return fmt.Errorf("init: exec: %w", err)
-		}
-	}
-	return nil
+
+	return err
 }
 
 func (p *Postgres) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
@@ -137,7 +133,7 @@ func (p *Postgres) List(ctx context.Context, offset, limit int) ([]kv.Record, er
 	return p.query(ctx, sql, args)
 }
 
-func (p *Postgres) Put(ctx context.Context, key string, version int64, value any) error {
+func (p *Postgres) Put(ctx context.Context, key string, version int, value any) error {
 	stmt, err := p.createPutMutationStatement(kv.PutMutation{Key: key, Version: version, Value: value})
 	if err != nil {
 		return fmt.Errorf("put: create statement: %w", err)
@@ -152,7 +148,7 @@ func (p *Postgres) Put(ctx context.Context, key string, version int64, value any
 	return nil
 }
 
-func (p *Postgres) Patch(ctx context.Context, key string, version int64, patch any) error {
+func (p *Postgres) Patch(ctx context.Context, key string, version int, patch any) error {
 	stmt, err := p.createPatchMutationStatement(kv.PatchMutation{Key: key, Version: version, Value: patch})
 	if err != nil {
 		return fmt.Errorf("patch: create statement: %w", err)
@@ -166,7 +162,7 @@ func (p *Postgres) Patch(ctx context.Context, key string, version int64, patch a
 	return nil
 }
 
-func (p *Postgres) Delete(ctx context.Context, keys ...string) (int64, error) {
+func (p *Postgres) Delete(ctx context.Context, keys ...string) (int, error) {
 	stmt, err := p.createDeleteMutationStatement(kv.DeleteMutation{Keys: keys})
 	if err != nil {
 		return 0, fmt.Errorf("delete: create statement: %w", err)
@@ -178,7 +174,7 @@ func (p *Postgres) Delete(ctx context.Context, keys ...string) (int64, error) {
 	return rowsAffected[0], nil
 }
 
-func (p *Postgres) DeletePrefix(ctx context.Context, prefix string, offset, limit int) (int64, error) {
+func (p *Postgres) DeletePrefix(ctx context.Context, prefix string, offset, limit int) (int, error) {
 	stmt, err := p.createDeletePrefixMutationStatement(kv.DeletePrefixMutation{Prefix: prefix, Offset: offset, Limit: limit})
 	if err != nil {
 		return 0, fmt.Errorf("deleteprefix: create statement: %w", err)
@@ -190,7 +186,7 @@ func (p *Postgres) DeletePrefix(ctx context.Context, prefix string, offset, limi
 	return rowsAffected[0], nil
 }
 
-func (p *Postgres) DeleteRange(ctx context.Context, from, to string, offset, limit int) (int64, error) {
+func (p *Postgres) DeleteRange(ctx context.Context, from, to string, offset, limit int) (int, error) {
 	stmt, err := p.createDeleteRangeMutationStatement(kv.DeleteRangeMutation{From: from, To: to, Offset: offset, Limit: limit})
 	if err != nil {
 		return 0, fmt.Errorf("deleterange: create statement: %w", err)
@@ -202,21 +198,21 @@ func (p *Postgres) DeleteRange(ctx context.Context, from, to string, offset, lim
 	return rowsAffected[0], nil
 }
 
-func (p *Postgres) Count(ctx context.Context) (int64, error) {
-	return p.queryScalarInt64(ctx, `SELECT count(*) FROM kv;`, nil)
+func (p *Postgres) Count(ctx context.Context) (int, error) {
+	return p.queryScalarInt(ctx, `SELECT count(*) FROM kv;`, nil)
 }
 
-func (p *Postgres) CountPrefix(ctx context.Context, prefix string) (int64, error) {
+func (p *Postgres) CountPrefix(ctx context.Context, prefix string) (int, error) {
 	args := pgx.NamedArgs{"prefix": prefix + "%"}
-	return p.queryScalarInt64(ctx, `SELECT count(*) FROM kv WHERE key LIKE @prefix;`, args)
+	return p.queryScalarInt(ctx, `SELECT count(*) FROM kv WHERE key LIKE @prefix;`, args)
 }
 
-func (p *Postgres) CountRange(ctx context.Context, from, to string) (int64, error) {
+func (p *Postgres) CountRange(ctx context.Context, from, to string) (int, error) {
 	args := pgx.NamedArgs{"from": from, "to": to}
-	return p.queryScalarInt64(ctx, `SELECT count(*) FROM kv WHERE key >= @from AND key < @to;`, args)
+	return p.queryScalarInt(ctx, `SELECT count(*) FROM kv WHERE key >= @from AND key < @to;`, args)
 }
 
-func (p *Postgres) Mutate(ctx context.Context, stmts []SQLStatement) ([]int64, error) {
+func (p *Postgres) Mutate(ctx context.Context, stmts []SQLStatement) ([]int, error) {
 	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("mutate: begin: %w", err)
@@ -228,7 +224,7 @@ func (p *Postgres) Mutate(ctx context.Context, stmts []SQLStatement) ([]int64, e
 			err = tx.Commit(ctx)
 		}
 	}()
-	rowsAffected := make([]int64, len(stmts))
+	rowsAffected := make([]int, len(stmts))
 	for i, stmt := range stmts {
 		tag, execErr := tx.Exec(ctx, stmt.SQL, stmt.NamedParams)
 		if execErr != nil {
@@ -237,12 +233,12 @@ func (p *Postgres) Mutate(ctx context.Context, stmts []SQLStatement) ([]int64, e
 			}
 			return rowsAffected, fmt.Errorf("mutate: index %d: %w", i, execErr)
 		}
-		rowsAffected[i] = tag.RowsAffected()
+		rowsAffected[i] = int(tag.RowsAffected())
 	}
-	return rowsAffected, nil
+	return rowsAffected, err
 }
 
-func (p *Postgres) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]int64, error) {
+func (p *Postgres) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]int, error) {
 	stmts := make([]SQLStatement, len(mutations))
 	for i, m := range mutations {
 		var stmt SQLStatement
@@ -288,10 +284,29 @@ func (p *Postgres) query(ctx context.Context, sql string, args pgx.NamedArgs) (r
 	return records, nil
 }
 
-func (p *Postgres) queryScalarInt64(ctx context.Context, sql string, args pgx.NamedArgs) (v int64, err error) {
+func (p *Postgres) queryStream(ctx context.Context, sql string, args pgx.NamedArgs) (records []kv.StreamRecord, err error) {
+	rows, err := p.Pool.Query(ctx, sql, args)
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r kv.StreamRecord
+		if err = rows.Scan(&r.Seq, &r.Action, &r.Record.Key, &r.Record.Version, &r.Record.Value, &r.Record.Created); err != nil {
+			return nil, fmt.Errorf("query scan: %w", err)
+		}
+		records = append(records, r)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("query rows: %w", err)
+	}
+	return records, nil
+}
+
+func (p *Postgres) queryScalarInt(ctx context.Context, sql string, args pgx.NamedArgs) (v int, err error) {
 	row := p.Pool.QueryRow(ctx, sql, args)
 	if err = row.Scan(&v); err != nil {
-		return 0, fmt.Errorf("queryscalarint64: %w", err)
+		return 0, fmt.Errorf("queryscalarint: %w", err)
 	}
 	return v, nil
 }
@@ -405,17 +420,35 @@ func (p *Postgres) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) 
 	}, nil
 }
 
-func (p *Postgres) Stream(ctx context.Context, offset int, limit int) (records []kv.Record, err error) {
-	if offset < 0 {
-		offset = 0
+func (p *Postgres) Stream(ctx context.Context, seq int, limit int) (records []kv.StreamRecord, err error) {
+	if seq < 0 {
+		seq = 0
 	}
 	if limit < 0 {
-		limit = math.MaxInt
+		limit = 100
 	}
-	sql := `SELECT key, version, value, created FROM kv ORDER BY created, key LIMIT @limit OFFSET @offset;`
+	sql := `SELECT seq, action, key, version, value, created FROM stream WHERE seq >= @seq LIMIT @limit;`
 	args := pgx.NamedArgs{
-		"limit":  limit,
-		"offset": offset,
+		"seq":   seq,
+		"limit": limit,
 	}
-	return p.query(ctx, sql, args)
+	return p.queryStream(ctx, sql, args)
+}
+
+func (p *Postgres) StreamSeq(ctx context.Context) (int, error) {
+	return p.queryScalarInt(ctx, `SELECT last_value FROM stream_seq_seq;`, nil)
+}
+
+func (p *Postgres) StreamTrim(ctx context.Context, seq int) error {
+	sql := `DELETE FROM stream;`
+	args := pgx.NamedArgs{}
+	if seq > 0 {
+		sql = `DELETE FROM stream WHERE seq <= @seq;`
+		args["seq"] = seq
+	}
+	_, err := p.Pool.Exec(ctx, sql, args)
+	if err != nil {
+		return fmt.Errorf("streamtrim: exec: %w", err)
+	}
+	return nil
 }

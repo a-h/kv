@@ -9,7 +9,7 @@ import (
 
 type PatchCommand struct {
 	Key     string `arg:"" help:"The key to patch in the KV store." required:""`
-	Version int64  `help:"The version of the key to patch, or -1 if no version check is required." default:"-1"`
+	Version int    `help:"The version of the key to patch, or -1 if no version check is required." default:"-1"`
 }
 
 func (c *PatchCommand) Run(ctx context.Context, g GlobalFlags) error {
