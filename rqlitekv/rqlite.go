@@ -593,3 +593,50 @@ func (rq *Rqlite) StreamTrim(ctx context.Context, seq int) (err error) {
 	}
 	return nil
 }
+
+func (rq *Rqlite) LockAcquire(ctx context.Context, name string, lockedBy string, forDuration time.Duration) (acquired bool, err error) {
+	stmts := rqlitehttp.SQLStatements{
+		{
+			SQL: `insert into locks (name, locked_by, locked_at, expires_at)
+values (:name, :locked_by, :now, :expires_at)
+on conflict(name) do update set
+    locked_by  = excluded.locked_by,
+    locked_at  = excluded.locked_at,
+    expires_at = excluded.expires_at
+where locks.expires_at <= :now
+   or locks.locked_by = excluded.locked_by;
+`,
+			NamedParams: map[string]any{
+				"name":       name,
+				"locked_by":  lockedBy,
+				"now":        rq.Now().Format(time.RFC3339Nano),
+				"expires_at": rq.Now().Add(forDuration).Format(time.RFC3339Nano),
+			},
+		},
+	}
+	rowsAffected, err := rq.Mutate(ctx, stmts)
+	if err != nil {
+		return false, fmt.Errorf("lockacquire: %w", err)
+	}
+	return len(rowsAffected) > 0 && rowsAffected[0] > 0, nil
+}
+
+func (rq *Rqlite) LockRelease(ctx context.Context, name string, lockedBy string) (err error) {
+	stmts := rqlitehttp.SQLStatements{
+		{
+			SQL: `delete from locks
+where name = :name
+  and locked_by = :locked_by;
+`,
+			NamedParams: map[string]any{
+				":name":      name,
+				":locked_by": lockedBy,
+			},
+		},
+	}
+	_, err = rq.Mutate(ctx, stmts)
+	if err != nil {
+		return fmt.Errorf("lockrelease: %w", err)
+	}
+	return nil
+}

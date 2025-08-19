@@ -129,6 +129,12 @@ type Store interface {
 	StreamSeq(ctx context.Context) (seq int, err error)
 	// StreamTrim trims the stream to the given sequence number.
 	StreamTrim(ctx context.Context, seq int) (err error)
+	// LockAcquire tries to acquire a lock, for a given duration.
+	// Returns true if the lock was acquired, false if it was already locked.
+	// Used to implementing distributed locks for stream processing.
+	LockAcquire(ctx context.Context, name string, lockedBy string, duration time.Duration) (acquired bool, err error)
+	// LockRelease releases a lock on a name, if it was acquired by the given lockedBy.
+	LockRelease(ctx context.Context, name string, lockedBy string) (err error)
 	// SetNow sets the function to use for getting the current time. This is used for testing purposes.
 	SetNow(now func() time.Time)
 }

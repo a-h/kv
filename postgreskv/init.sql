@@ -64,3 +64,11 @@ AFTER DELETE ON kv
 FOR EACH ROW
 WHEN (OLD.key NOT LIKE 'github.com/a-h/kv/stream/%')
 EXECUTE FUNCTION kv_stream_delete_fn();
+
+-- locks table
+CREATE TABLE locks (
+    name TEXT PRIMARY KEY,
+    locked_by TEXT NOT NULL,
+    locked_at TIMESTAMPTZ NOT NULL,
+    lock_until TIMESTAMPTZ NOT NULL
+);

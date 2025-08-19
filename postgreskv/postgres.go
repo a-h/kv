@@ -452,3 +452,40 @@ func (p *Postgres) StreamTrim(ctx context.Context, seq int) error {
 	}
 	return nil
 }
+
+func (p *Postgres) LockAcquire(ctx context.Context, name string, lockedBy string, forDuration time.Duration) (bool, error) {
+	now := p.Now()
+	sql := `
+INSERT INTO locks (name, locked_by, locked_at, lock_until)
+VALUES (@name, @locked_by, @now, @lock_until)
+ON CONFLICT (name) DO UPDATE
+SET locked_by = EXCLUDED.locked_by,
+    locked_at = @now,
+    lock_until = @lock_until
+WHERE locks.locked_by = EXCLUDED.locked_by
+   OR locks.lock_until < @now;`
+	args := pgx.NamedArgs{
+		"name":       name,
+		"locked_by":  lockedBy,
+		"now":        now,
+		"lock_until": now.Add(forDuration),
+	}
+	rowsAffected, err := p.Mutate(ctx, []SQLStatement{{SQL: sql, NamedParams: args}})
+	if err != nil {
+		return false, fmt.Errorf("lockacquire: mutate: %w", err)
+	}
+	return rowsAffected[0] > 0, nil
+}
+
+func (p *Postgres) LockRelease(ctx context.Context, name string, lockedBy string) error {
+	sql := `DELETE FROM locks WHERE name = @name AND locked_by = @locked_by;`
+	args := pgx.NamedArgs{
+		"name":      name,
+		"locked_by": lockedBy,
+	}
+	_, err := p.Pool.Exec(ctx, sql, args)
+	if err != nil {
+		return fmt.Errorf("lockrelease: exec: %w", err)
+	}
+	return nil
+}

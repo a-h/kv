@@ -37,3 +37,11 @@ begin
   insert into stream (action, key, version, value, created)
   values ('delete', old.key, old.version, old.value, old.created);
 end;
+
+-- locks
+create table locks (
+  name text primary key,
+  locked_by text not null,
+  locked_at text not null,
+  expires_at text not null
+);
