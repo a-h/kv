@@ -7,8 +7,8 @@ import (
 )
 
 type ConsumerCommitCommand struct {
-	Name    string `help:"The consumer name." required:"true"`
-	LastSeq int    `help:"The last sequence number to commit." required:"true"`
+	Name    string `arg:"" help:"The consumer name." required:"true"`
+	LastSeq int    `arg:"" help:"The last sequence number to commit." required:"true"`
 }
 
 func (c *ConsumerCommitCommand) Run(ctx context.Context, g GlobalFlags) error {

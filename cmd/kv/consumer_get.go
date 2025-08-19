@@ -9,7 +9,7 @@ import (
 )
 
 type ConsumerGetCommand struct {
-	Name  string `help:"The consumer name." required:"true"`
+	Name  string `arg:"" help:"The consumer name." required:"true"`
 	Limit int    `help:"The maximum number of records to fetch." default:"10"`
 }
 
@@ -29,7 +29,34 @@ func (c *ConsumerGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if err != nil {
 		return err
 	}
+	// Decode record values to JSON, matching stream get CLI behavior.
+	type recordDisplay struct {
+		Key     string      `json:"key"`
+		Version int         `json:"version"`
+		Value   interface{} `json:"value"`
+		Created interface{} `json:"created"`
+	}
+	type consumerRecordDisplay struct {
+		Seq    int           `json:"seq"`
+		Action string        `json:"action"`
+		Record recordDisplay `json:"record"`
+	}
+	var displayRecords []consumerRecordDisplay
+	for _, r := range records {
+		var value interface{}
+		_ = json.Unmarshal(r.Record.Value, &value)
+		displayRecords = append(displayRecords, consumerRecordDisplay{
+			Seq:    r.Seq,
+			Action: string(r.Action),
+			Record: recordDisplay{
+				Key:     r.Record.Key,
+				Version: r.Record.Version,
+				Value:   value,
+				Created: r.Record.Created,
+			},
+		})
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(records)
+	return enc.Encode(displayRecords)
 }

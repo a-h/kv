@@ -8,79 +8,79 @@ It can be used as a CLI tool, or as a Go library.
 
 The CLI tool can be used to interact with a sqlite, rqlite, or postgres database.
 
-To connect to an rqlite database, use `--type 'rqlite' --connection 'http://localhost:4001?user=admin&password=secret'`.
+To connect to an rqlite database, use `--type rqlite --connection 'http://localhost:4001?user=admin&password=secret'`.
 
-To connect to a sqlite database, use `--type 'sqlite' --connection 'file:data.db?mode=rwc'`.
+To connect to a sqlite database, use `--type sqlite --connection 'file:data.db?mode=rwc'`.
 
-To connect to a postgres database, use `--type 'postgres' --connection 'postgres://postgres:secret@localhost:5432/postgres?sslmode=disable'`.
+To connect to a postgres database, use `--type postgres --connection 'postgres://postgres:secret@localhost:5432/postgres?sslmode=disable'`.
+
 
 ```bash
 # Create a new data.db file (use the --connection flag to specify a different file).
 kv init
 
 # Put a key into the store.
-echo '{"hello": "world"}' | kv put hello
+echo '{"hello": "world"}' | kv put --key hello
 
 # Get the key back.
-kv get hello
+kv get key --key hello
 
 # List all keys in the store.
 kv list
 
 # Delete the key.
 kv delete hello
+
+# Stream records (new):
+kv stream get <seq> <limit>
+
+# Get stream sequence number:
+kv stream seq
+
+# Trim stream:
+kv stream trim <seq>
+
+kv consumer get <name>
+kv consumer status <name>
+kv consumer commit <name> <seq>
+kv consumer delete <name>
+# Lock commands:
+kv lock acquire <name> <lockedBy> [--duration=10m]
+kv lock release <name> <lockedBy>
 ```
 
 ### CLI Usage
 
 ```bash
-Usage: kv <command> [flags]
+Usage: kv [global flags] <command> [subcommand] [flags]
 
-Flags:
-  -h, --help             Show context-sensitive help.
-      --type="sqlite"    The type of KV store to use.
-      --connection="file:data.db?mode=rwc"
-                         The connection string to use.
+Global Flags:
+  --type        The type of KV store to use. One of: sqlite, rqlite, postgres. Default: sqlite
+  --connection  The connection string to use. Default: file:data.db?mode=rwc
 
 Commands:
-  init [flags]
-    Initialize the store.
-
-  get <key> [flags]
-    Get a key.
-
-  get-prefix <prefix> [<offset> [<limit>]] [flags]
-    Get all keys with a given prefix.
-
-  get-range <from> <to> [<offset> [<limit>]] [flags]
-    Get a range of keys.
-
-  list [<offset> [<limit>]] [flags]
-    List all keys.
-
-  put <key> [flags]
-    Put a key.
-
-  delete <key> [flags]
-    Delete a key.
-
-  delete-prefix <prefix> [<offset> [<limit>]] [flags]
-    Delete all keys with a given prefix.
-
-  delete-range <from> <to> [<offset> [<limit>]] [flags]
-    Delete a range of keys.
-
-  count [flags]
-    Count the number of keys.
-
-  count-prefix <prefix> [flags]
-    Count the number of keys with a given prefix.
-
-  count-range <from> <to> [flags]
-    Count the number of keys in a range.
-
-  patch <key> [flags]
-    Patch a key.
+  init                 Initialize the store.
+  get key              Get a key.
+  get prefix           Get all keys with a given prefix.
+  get range            Get a range of keys.
+  list                 List all keys.
+  put                  Put a key.
+  patch                Patch a key.
+  delete key           Delete a key.
+  delete prefix        Delete all keys with a given prefix.
+  delete range         Delete a range of keys.
+  count all            Count the number of keys.
+  count prefix         Count the number of keys with a given prefix.
+  count range          Count the number of keys in a range.
+  stream get <seq> <limit>  Stream records (for replication or change feed).
+  stream seq           Get the current stream sequence number.
+  stream trim <seq>     Trim the stream to a sequence number.
+  consumer get <name>            Get consumer state.
+  consumer status <name>         Get consumer status.
+  consumer commit <name> <seq>   Commit a consumer sequence.
+  consumer delete <name>         Delete a consumer.
+  lock acquire <name> <lockedBy> [--duration=10m]  Acquire a lock (default 10 minutes).
+  lock release <name> <lockedBy>                   Release a lock.
 
 Run "kv <command> --help" for more information on a command.
 ```
@@ -187,62 +187,41 @@ func run(ctx context.Context, store kv.Store) (error) {
 
 ## Features
 
-`Store` has the following methods:
+`Store` interface (see `store.go`):
 
 ```go
-// Init initializes the store. It should be called before any other method, and creates the necessary table.
-Init(ctx context.Context) error
-// Get gets a key from the store, and populates v with the value. If the key does not exist, it returns ok=false.
-Get(ctx context.Context, key string, v any) (r Record[T], ok bool, err error)
-// GetPrefix gets all keys with a given prefix from the store.
-GetPrefix(ctx context.Context, prefix string, offset, limit int) (records Records[T], err error)
-// GetRange gets all keys between the key from (inclusive) and to (exclusive).
-// e.g. select key from kv where key >= 'a' and key < 'c';
-GetRange(ctx context.Context, from, to string, offset, limit int) (records Records[T], err error)
-// List gets all keys from the store, starting from the given offset and limiting the number of results to the given limit.
-List(ctx context.Context, offset, limit int) (records Records[T], err error)
-// Put a key into the store. If the key already exists, it will update the value if the version matches, and increment the version.
-//
-// If the key does not exist, it will insert the key with version 1.
-//
-// If the key exists but the version does not match, it will return an error.
-//
-// If the version is -1, it will skip the version check.
-//
-// If the version is 0, it will only insert the key if it does not already exist.
-Put(ctx context.Context, key string, version int64, value T) (err error)
-// PutAll puts multiple keys into the store, in a single transaction.
-PutAll(ctx context.Context, records Records[T]) (err error)
-// Delete deletes keys from the store. If the keys do not exist, no error is returned.
-Delete(ctx context.Context, keys ...string) (rowsAffected int64, err error)
-// DeletePrefix deletes all keys with a given prefix from the store.
-DeletePrefix(ctx context.Context, prefix string, offset, limit int) (rowsAffected int64, err error)
-// DeleteRange deletes all keys between the key from (inclusive) and to (exclusive).
-DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int64, err error)
-// Count returns the number of keys in the store.
-Count(ctx context.Context) (count int64, err error)
-// CountPrefix returns the number of keys in the store with a given prefix.
-CountPrefix(ctx context.Context, prefix string) (count int64, err error)
-// CountRange returns the number of keys in the store between the key from (inclusive) and to (exclusive).
-CountRange(ctx context.Context, from, to string) (count int64, err error)
-// Patch patches a key in the store. The patch is a JSON merge patch (RFC 7396), so would look something like map[string]any{"key": "value"}.
-Patch(ctx context.Context, key string, version int64, patch any) (err error)
-// Query runs a select query against the store, and returns the results.
-Query(ctx context.Context, query string, args map[string]any) (output []Record, err error)
-// Mutate runs a mutation against the store, and returns the number of rows affected.
-Mutate(ctx context.Context, query string, args map[string]any) (rowsAffected int64, err error)
-// MutateAll runs the mutations against the store, in the order they are provided.
-//
-// Use the Put, Patch, PutPatches, Delete, DeleteKeys, DeletePrefix and DeleteRange functions to populate the operations argument.
-MutateAll(ctx context.Context, mutations ...db.Mutation) (rowsAffected []int64, err error)
+type Store interface {
+  Init(ctx context.Context) error
+  Get(ctx context.Context, key string, v any) (r Record, ok bool, err error)
+  GetPrefix(ctx context.Context, prefix string, offset, limit int) (rows []Record, err error)
+  GetRange(ctx context.Context, from, to string, offset, limit int) (rows []Record, err error)
+  List(ctx context.Context, start, limit int) (rows []Record, err error)
+  Put(ctx context.Context, key string, version int, value any) (err error)
+  Delete(ctx context.Context, keys ...string) (rowsAffected int, err error)
+  DeletePrefix(ctx context.Context, prefix string, offset, limit int) (rowsAffected int, err error)
+  DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int, err error)
+  Count(ctx context.Context) (n int, err error)
+  CountPrefix(ctx context.Context, prefix string) (count int, err error)
+  CountRange(ctx context.Context, from, to string) (count int, err error)
+  Patch(ctx context.Context, key string, version int, patch any) (err error)
+  MutateAll(ctx context.Context, mutations ...Mutation) (rowsAffected []int, err error)
+  Stream(ctx context.Context, seq int, limit int) (rows []StreamRecord, err error)
+  StreamSeq(ctx context.Context) (seq int, err error)
+  StreamTrim(ctx context.Context, seq int) (err error)
+  LockAcquire(ctx context.Context, name string, lockedBy string, duration time.Duration) (acquired bool, err error)
+  LockRelease(ctx context.Context, name string, lockedBy string) (err error)
+  SetNow(now func() time.Time)
+}
 ```
+
+See `store.go` for mutation helpers and record helpers.
 
 ## Tasks
 
 ### build
 
 ```bash
-go build ./...
+go build -o kv ./cmd/kv/
 ```
 
 ### test

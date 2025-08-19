@@ -10,8 +10,8 @@ import (
 )
 
 type StreamGetCommand struct {
-	Offset int `arg:"-o,--offset" help:"Range offset." default:"0"`
-	Limit  int `arg:"-l,--limit" help:"The maximum number of records to return, or -1 for no limit." default:"1000"`
+	Seq   int `arg:"" help:"Sequence number to start from." default:"0"`
+	Limit int `arg:"" help:"The maximum number of records to return, or -1 for no limit." default:"1000"`
 }
 
 func (c *StreamGetCommand) Run(ctx context.Context, g GlobalFlags) error {
@@ -20,7 +20,7 @@ func (c *StreamGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 		return fmt.Errorf("failed to create store: %w", err)
 	}
 
-	data, err := store.Stream(ctx, c.Offset, c.Limit)
+	data, err := store.Stream(ctx, c.Seq, c.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to list data: %w", err)
 	}
@@ -51,6 +51,10 @@ func (c *StreamGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	}
 
 	// Write the updated offset.
-	_, err = fmt.Printf("kv --type %q --connection %q records %d %d\n", g.Type, g.Connection, c.Offset+len(data), c.Limit)
+	lastSeq := c.Seq
+	if len(data) > 0 {
+		lastSeq = data[len(data)-1].Seq
+	}
+	_, err = fmt.Printf("kv --type %q --connection %q stream get %d %d\n", g.Type, g.Connection, lastSeq+1, c.Limit)
 	return err
 }

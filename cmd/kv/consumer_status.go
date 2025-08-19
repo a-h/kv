@@ -10,7 +10,7 @@ import (
 )
 
 type ConsumerStatusCommand struct {
-	Name string `help:"The consumer name." required:"true"`
+	Name string `arg:"" help:"The consumer name." required:"true"`
 }
 
 func (c *ConsumerStatusCommand) Run(ctx context.Context, g GlobalFlags) error {

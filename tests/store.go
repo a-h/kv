@@ -115,6 +115,7 @@ func Run(t *testing.T, store kv.Store) {
 	t.Run("PutPatches", newPutPatchesTest(ctx, store))
 	t.Run("Stream", newStreamTest(ctx, store))
 	t.Run("Consumer", newConsumerTest(ctx, store))
+	t.Run("Locks", newLockTest(ctx, store))
 
 	deleted, err := store.DeletePrefix(ctx, "*", 0, -1)
 	if err != nil {

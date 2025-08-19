@@ -507,8 +507,7 @@ on conflict(name) do update set
     locked_at  = excluded.locked_at,
     expires_at = excluded.expires_at
 where locks.expires_at <= :now
-   or locks.locked_by = excluded.locked_by;
-`,
+   or locks.locked_by = excluded.locked_by;`,
 		NamedParams: map[string]any{
 			":name":       name,
 			":locked_by":  lockedBy,
@@ -525,10 +524,7 @@ where locks.expires_at <= :now
 
 func (s *Sqlite) LockRelease(ctx context.Context, name string, lockedBy string) (err error) {
 	stmt := SQLStatement{
-		SQL: `delete from locks
-where name = :name
-  and locked_by = :locked_by;
-`,
+		SQL: `delete from locks where name = :name and locked_by = :locked_by;`,
 		NamedParams: map[string]any{
 			":name":      name,
 			":locked_by": lockedBy,

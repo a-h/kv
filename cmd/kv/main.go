@@ -67,6 +67,7 @@ type CLI struct {
 	Patch     PatchCommand     `cmd:"patch" help:"Patch a key."`
 	Stream    StreamCommand    `cmd:"stream" help:"Stream operations (get, seq, trim)."`
 	Consumer  ConsumerCommand  `cmd:"consumer" help:"Consumer operations (get, status, commit)."`
+	Lock      LockCommand      `cmd:"lock" help:"Lock operations (acquire, release)."`
 }
 
 func main() {

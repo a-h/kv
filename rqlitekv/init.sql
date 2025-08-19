@@ -36,7 +36,7 @@ when old.key not like 'github.com/a-h/kv/stream/%'
 begin
   insert into stream (action, key, version, value, created)
   values ('delete', old.key, old.version, old.value, old.created);
-end
+end;
 
 -- locks
 create table if not exists locks (
