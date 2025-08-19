@@ -39,7 +39,7 @@ begin
 end
 
 -- locks
-create table locks (
+create table if not exists locks (
   name text primary key,
   locked_by text not null,
   locked_at text not null,

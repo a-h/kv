@@ -66,7 +66,7 @@ WHEN (OLD.key NOT LIKE 'github.com/a-h/kv/stream/%')
 EXECUTE FUNCTION kv_stream_delete_fn();
 
 -- locks table
-CREATE TABLE locks (
+CREATE TABLE IF NOT EXISTS locks (
     name TEXT PRIMARY KEY,
     locked_by TEXT NOT NULL,
     locked_at TIMESTAMPTZ NOT NULL,
