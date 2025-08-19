@@ -8,12 +8,12 @@ import (
 	"github.com/a-h/kv"
 )
 
-type ConsumerGetBatchCommand struct {
+type ConsumerGetCommand struct {
 	Name  string `help:"The consumer name." required:"true"`
 	Limit int    `help:"The maximum number of records to fetch." default:"10"`
 }
 
-func (c *ConsumerGetBatchCommand) Run(ctx context.Context, g GlobalFlags) error {
+func (c *ConsumerGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	store, err := g.Store()
 	if err != nil {
 		return err

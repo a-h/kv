@@ -57,25 +57,16 @@ func (g GlobalFlags) Store() (kv.Store, error) {
 type CLI struct {
 	GlobalFlags
 
-	Init             InitCommand             `cmd:"init" help:"Initialize the store."`
-	Get              GetCommand              `cmd:"get" help:"Get a key."`
-	GetPrefix        GetPrefixCommand        `cmd:"get-prefix" help:"Get all keys with a given prefix."`
-	GetRange         GetRangeCommand         `cmd:"get-range" help:"Get a range of keys."`
-	List             ListCommand             `cmd:"list" help:"List all keys."`
-	Put              PutCommand              `cmd:"put" help:"Put a key."`
-	Delete           DeleteCommand           `cmd:"delete" help:"Delete a key."`
-	DeletePrefix     DeletePrefixCommand     `cmd:"delete-prefix" help:"Delete all keys with a given prefix."`
-	DeleteRange      DeleteRangeCommand      `cmd:"delete-range" help:"Delete a range of keys."`
-	Count            CountCommand            `cmd:"count" help:"Count the number of keys."`
-	CountPrefix      CountPrefixCommand      `cmd:"count-prefix" help:"Count the number of keys with a given prefix."`
-	CountRange       CountRangeCommand       `cmd:"count-range" help:"Count the number of keys in a range."`
-	Patch            PatchCommand            `cmd:"patch" help:"Patch a key."`
-	BenchmarkGet     BenchmarkGetCommand     `cmd:"benchmark-get" help:"Benchmark getting records."`
-	BenchmarkPut     BenchmarkPutCommand     `cmd:"benchmark-put" help:"Benchmark putting records."`
-	BenchmarkPatch   BenchmarkPatchCommand   `cmd:"benchmark-patch" help:"Benchmark patching records."`
-	ConsumerGetBatch ConsumerGetBatchCommand `cmd:"consumer-get-batch" help:"Get a batch of records for a consumer."`
-	ConsumerStatus   ConsumerStatusCommand   `cmd:"consumer-status" help:"Show the status of a consumer."`
-	ConsumerCommit   ConsumerCommitCommand   `cmd:"consumer-commit" help:"Commit the consumer position to a sequence number."`
+	Init      InitCommand      `cmd:"init" help:"Initialize the store."`
+	Get       GetCommand       `cmd:"get" help:"Get operations."`
+	Delete    DeleteCommand    `cmd:"delete" help:"Delete operations."`
+	Count     CountCommand     `cmd:"count" help:"Count operations."`
+	Benchmark BenchmarkCommand `cmd:"benchmark" help:"Benchmark operations."`
+	List      ListCommand      `cmd:"list" help:"List all keys."`
+	Put       PutCommand       `cmd:"put" help:"Put a key."`
+	Patch     PatchCommand     `cmd:"patch" help:"Patch a key."`
+	Stream    StreamCommand    `cmd:"stream" help:"Stream operations (get, seq, trim)."`
+	Consumer  ConsumerCommand  `cmd:"consumer" help:"Consumer operations (get, status, commit)."`
 }
 
 func main() {
