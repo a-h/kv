@@ -98,6 +98,45 @@ func newLockTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 				t.Fatalf("Unexpected error releasing by non-owner: %v.", err)
 			}
 		})
+		t.Run("LockStatus returns ok=false if lock does not exist", func(t *testing.T) {
+			t.Parallel()
+			lockName := "lockstatus_not_exist"
+			status, ok, err := store.LockStatus(ctx, lockName)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if ok {
+				t.Errorf("Expected ok=false for non-existent lock, got ok=true, status=%+v", status)
+			}
+		})
+		t.Run("LockStatus returns ok=true and correct status if lock exists", func(t *testing.T) {
+			t.Parallel()
+			lockName := "lockstatus_exists"
+			lockedBy := "server1"
+			duration := 2 * time.Second
+			acquired, err := store.LockAcquire(ctx, lockName, lockedBy, duration)
+			if err != nil || !acquired {
+				t.Fatalf("Failed to acquire lock: %v", err)
+			}
+			status, ok, err := store.LockStatus(ctx, lockName)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if !ok {
+				t.Fatalf("Expected ok=true for existing lock, got ok=false")
+			}
+			if status.Name != lockName {
+				t.Errorf("Expected Name=%q, got %q", lockName, status.Name)
+			}
+			if status.LockedBy != lockedBy {
+				t.Errorf("Expected LockedBy=%q, got %q", lockedBy, status.LockedBy)
+			}
+			if time.Since(status.LockedAt) > 5*time.Second {
+				t.Errorf("LockedAt too far in the past: %v", status.LockedAt)
+			}
+			if status.ExpiresAt.Sub(status.LockedAt) < duration {
+				t.Errorf("ExpiresAt not at least duration after LockedAt: got %v, want at least %v", status.ExpiresAt.Sub(status.LockedAt), duration)
+			}
+		})
 	}
 }
-

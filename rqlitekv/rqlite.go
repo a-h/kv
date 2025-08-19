@@ -636,3 +636,53 @@ func (rq *Rqlite) LockRelease(ctx context.Context, name string, lockedBy string)
 	}
 	return nil
 }
+
+func (rq *Rqlite) LockStatus(ctx context.Context, name string) (status kv.LockStatus, ok bool, err error) {
+	stmts := rqlitehttp.SQLStatements{
+		{
+			SQL: `select name, locked_by, locked_at, expires_at from locks where name = :name limit 1;`,
+			NamedParams: map[string]any{
+				"name": name,
+			},
+		},
+	}
+	opts := &rqlitehttp.QueryOptions{
+		Timeout: rq.Timeout,
+		Level:   rq.ReadConsistency,
+	}
+	qr, err := rq.Client.Query(ctx, stmts, opts)
+	if err != nil {
+		return status, false, err
+	}
+	if len(qr.Results) == 0 || len(qr.Results[0].Values) == 0 {
+		return status, false, nil
+	}
+	values := qr.Results[0].Values[0]
+	if len(values) != 4 {
+		return status, false, fmt.Errorf("expected 4 columns, got %d", len(values))
+	}
+	var okType bool
+	if status.Name, okType = values[0].(string); !okType {
+		return status, false, fmt.Errorf("expected string for name, got %T", values[0])
+	}
+	if status.LockedBy, okType = values[1].(string); !okType {
+		return status, false, fmt.Errorf("expected string for locked_by, got %T", values[1])
+	}
+	lockedAtStr, okType := values[2].(string)
+	if !okType {
+		return status, false, fmt.Errorf("expected string for locked_at, got %T", values[2])
+	}
+	status.LockedAt, err = time.Parse(time.RFC3339Nano, lockedAtStr)
+	if err != nil {
+		return status, false, fmt.Errorf("failed to parse locked_at: %w", err)
+	}
+	expiresAtStr, okType := values[3].(string)
+	if !okType {
+		return status, false, fmt.Errorf("expected string for expires_at, got %T", values[3])
+	}
+	status.ExpiresAt, err = time.Parse(time.RFC3339Nano, expiresAtStr)
+	if err != nil {
+		return status, false, fmt.Errorf("failed to parse expires_at: %w", err)
+	}
+	return status, true, nil
+}

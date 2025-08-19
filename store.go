@@ -30,6 +30,7 @@ const (
 	ActionDelete Action = "delete"
 )
 
+// StreamRecord represents a record in the stream.
 type StreamRecord struct {
 	Seq    int    `json:"seq"`
 	Action Action `json:"action"`
@@ -137,6 +138,8 @@ type Store interface {
 	LockRelease(ctx context.Context, name string, lockedBy string) (err error)
 	// SetNow sets the function to use for getting the current time. This is used for testing purposes.
 	SetNow(now func() time.Time)
+	// LockStatus returns the status of a lock.
+	LockStatus(ctx context.Context, name string) (status LockStatus, ok bool, err error)
 }
 
 type Mutation interface {
@@ -225,3 +228,11 @@ type DeleteRangeMutation struct {
 }
 
 func (DeleteRangeMutation) isMutation() {}
+
+// LockStatus contains information about a lock.
+type LockStatus struct {
+	Name      string    `json:"name"`
+	LockedBy  string    `json:"lockedBy"`
+	LockedAt  time.Time `json:"lockedAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}

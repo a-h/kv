@@ -489,3 +489,18 @@ func (p *Postgres) LockRelease(ctx context.Context, name string, lockedBy string
 	}
 	return nil
 }
+
+func (p *Postgres) LockStatus(ctx context.Context, name string) (status kv.LockStatus, ok bool, err error) {
+	row := p.Pool.QueryRow(ctx, `SELECT name, locked_by, locked_at, lock_until FROM locks WHERE name = @name LIMIT 1;`, pgx.NamedArgs{"name": name})
+	var lockedAt, expiresAt time.Time
+	err = row.Scan(&status.Name, &status.LockedBy, &lockedAt, &expiresAt)
+	if err == pgx.ErrNoRows {
+		return status, false, nil
+	}
+	if err != nil {
+		return status, false, err
+	}
+	status.LockedAt = lockedAt
+	status.ExpiresAt = expiresAt
+	return status, true, nil
+}

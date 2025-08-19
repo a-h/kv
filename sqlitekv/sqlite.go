@@ -536,3 +536,37 @@ func (s *Sqlite) LockRelease(ctx context.Context, name string, lockedBy string) 
 	}
 	return nil
 }
+
+func (s *Sqlite) LockStatus(ctx context.Context, name string) (status kv.LockStatus, ok bool, err error) {
+	conn, err := s.Pool.Take(ctx)
+	if err != nil {
+		return status, false, err
+	}
+	defer s.Pool.Put(conn)
+	var found bool
+	opts := &sqlitex.ExecOptions{
+		Named: map[string]any{":name": name},
+		ResultFunc: func(stmt *sqlite.Stmt) (err error) {
+			found = true
+			status.Name = stmt.GetText("name")
+			status.LockedBy = stmt.GetText("locked_by")
+			status.LockedAt, err = time.Parse(time.RFC3339Nano, stmt.GetText("locked_at"))
+			if err != nil {
+				return fmt.Errorf("lockstatus: error parsing locked_at time: %w", err)
+			}
+			status.ExpiresAt, err = time.Parse(time.RFC3339Nano, stmt.GetText("expires_at"))
+			if err != nil {
+				return fmt.Errorf("lockstatus: error parsing expires_at time: %w", err)
+			}
+			return nil
+		},
+	}
+	err = sqlitex.Execute(conn, `select name, locked_by, locked_at, expires_at from locks where name = :name limit 1;`, opts)
+	if err != nil {
+		return status, false, err
+	}
+	if !found {
+		return status, false, nil
+	}
+	return status, true, nil
+}
