@@ -11,8 +11,8 @@ func streamKeyFromName(name string) string {
 	return fmt.Sprintf("github.com/a-h/kv/stream/%s", name)
 }
 
-func NewStreamReader(ctx context.Context, store Store, streamName, consumerName string) *StreamReader {
-	return &StreamReader{
+func NewStreamConsumer(ctx context.Context, store Store, streamName, consumerName string) *StreamConsumer {
+	return &StreamConsumer{
 		Locker:              NewLocker(store, streamName, consumerName, 5*time.Minute),
 		Store:               store,
 		StreamName:          streamName,
@@ -25,7 +25,7 @@ func NewStreamReader(ctx context.Context, store Store, streamName, consumerName 
 	}
 }
 
-type StreamReader struct {
+type StreamConsumer struct {
 	Locker       *Locker
 	Store        Store
 	StreamName   string
@@ -44,7 +44,7 @@ type StreamReader struct {
 }
 
 // Commit acknowledges that the records returned by Read have been processed.
-func (s *StreamReader) Commit(ctx context.Context) error {
+func (s *StreamConsumer) Commit(ctx context.Context) error {
 	if s.LastSeq < 0 {
 		return fmt.Errorf("stream: LastSeq is not set, call Get before Commit or set LastSeq explicitly")
 	}
@@ -63,19 +63,19 @@ func (s *StreamReader) Commit(ctx context.Context) error {
 }
 
 // CommitUpTo acknowledges that all records up to and including the specified sequence have been processed.
-func (s *StreamReader) CommitUpTo(ctx context.Context, seq int) error {
+func (s *StreamConsumer) CommitUpTo(ctx context.Context, seq int) error {
 	s.LastSeq = seq
 	return s.Commit(ctx)
 }
 
 // Delete removes the consumer record from the store.
-func (s *StreamReader) Delete(ctx context.Context) error {
+func (s *StreamConsumer) Delete(ctx context.Context) error {
 	_, err := s.Store.Delete(ctx, streamKeyFromName(s.StreamName))
 	return err
 }
 
 // Status returns the current status of the consumer.
-func (s *StreamReader) Status(ctx context.Context) (StreamConsumerStatus, bool, error) {
+func (s *StreamConsumer) Status(ctx context.Context) (StreamConsumerStatus, bool, error) {
 	var cs StreamConsumerStatus
 	_, ok, err := s.Store.Get(ctx, streamKeyFromName(s.StreamName), &cs)
 	if err != nil {
@@ -84,7 +84,7 @@ func (s *StreamReader) Status(ctx context.Context) (StreamConsumerStatus, bool, 
 	return cs, ok, nil
 }
 
-func (s *StreamReader) Read(ctx context.Context) iter.Seq2[StreamRecord, error] {
+func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error] {
 	return func(yield func(StreamRecord, error) bool) {
 		var lockAcquired bool
 		defer func() {

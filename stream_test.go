@@ -140,7 +140,7 @@ func (m *mockStore) SetNow(now func() time.Time) {
 	}
 }
 
-func TestStreamReader(t *testing.T) {
+func TestStreamConsumer(t *testing.T) {
 	t.Run("Error is returned if stream fetch fails", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -161,7 +161,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -199,7 +199,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -238,7 +238,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -276,7 +276,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 		sr.LockExtendThreshold = 10 * time.Second
@@ -322,7 +322,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 		sr.LockExtendThreshold = 10 * time.Second
@@ -369,7 +369,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 		sr.LockExtendThreshold = 10 * time.Second
@@ -416,7 +416,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -453,7 +453,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 10 * time.Millisecond
 		sr.MaxBackoff = 20 * time.Millisecond
 
@@ -493,7 +493,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -538,7 +538,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -603,7 +603,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr1 := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr1 := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr1.MinBackoff = 1 * time.Millisecond
 		sr1.MaxBackoff = 2 * time.Millisecond
 
@@ -625,7 +625,7 @@ func TestStreamReader(t *testing.T) {
 			t.Errorf("expected to read 2 records, got %d", recordCount)
 		}
 
-		sr2 := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr2 := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr2.MinBackoff = 1 * time.Millisecond
 		sr2.MaxBackoff = 2 * time.Millisecond
 
@@ -674,7 +674,7 @@ func TestStreamReader(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamReader(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
