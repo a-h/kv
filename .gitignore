@@ -1,5 +1,5 @@
 .direnv
-coverage.out
-data.db*
-result
-kv
+/coverage.out
+/data.db*
+/result
+/kv
