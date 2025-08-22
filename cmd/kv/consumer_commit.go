@@ -16,10 +16,5 @@ func (c *ConsumerCommitCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if err != nil {
 		return err
 	}
-	consumer, err := kv.NewStreamConsumer(ctx, store, c.Name)
-	if err != nil {
-		return err
-	}
-	consumer.LastSeq = c.LastSeq
-	return consumer.Commit(ctx)
+	return kv.CommitStreamConsumer(ctx, store, c.Name, c.LastSeq+1)
 }

@@ -18,14 +18,7 @@ func (c *ConsumerGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if err != nil {
 		return err
 	}
-	consumer, err := kv.NewStreamConsumer(ctx, store, c.Name)
-	if err != nil {
-		return err
-	}
-	if c.Limit > 0 {
-		consumer.Limit = c.Limit
-	}
-	records, err := consumer.Get(ctx)
+	records, err := kv.GetStreamConsumerRecords(ctx, store, c.Name, c.Limit)
 	if err != nil {
 		return err
 	}

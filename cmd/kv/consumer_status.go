@@ -18,11 +18,7 @@ func (c *ConsumerStatusCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if err != nil {
 		return err
 	}
-	consumer, err := kv.NewStreamConsumer(ctx, store, c.Name)
-	if err != nil {
-		return err
-	}
-	status, ok, err := consumer.Status(ctx)
+	status, ok, err := kv.GetStreamConsumerStatus(ctx, store, c.Name)
 	if err != nil {
 		return err
 	}
