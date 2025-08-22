@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+type CommitMode string
+
+const (
+	CommitModeNone  CommitMode = "none"
+	CommitModeBatch CommitMode = "batch"
+	CommitModeAll   CommitMode = "all"
+)
+
 func streamKeyFromName(name string) string {
 	return fmt.Sprintf("github.com/a-h/kv/stream/%s", name)
 }
@@ -22,6 +30,7 @@ func NewStreamConsumer(ctx context.Context, store Store, streamName, consumerNam
 		MinBackoff:          100 * time.Millisecond,
 		MaxBackoff:          5 * time.Second,
 		LockExtendThreshold: 10 * time.Second,
+		CommitMode:          CommitModeBatch,
 	}
 }
 
@@ -41,6 +50,8 @@ type StreamConsumer struct {
 	MinBackoff          time.Duration
 	MaxBackoff          time.Duration
 	LockExtendThreshold time.Duration
+	// CommitMode controls when commits happen: "none", "batch", "all"
+	CommitMode CommitMode
 }
 
 // Commit acknowledges that the records returned by Read have been processed.
@@ -179,6 +190,26 @@ func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error
 					return
 				}
 				s.LastSeq = r.Seq
+				if s.CommitMode == CommitModeAll {
+					if err := s.Commit(ctx); err != nil {
+						if !yield(StreamRecord{}, err) {
+							return
+						}
+						return
+					}
+				}
+			}
+
+			if s.CommitMode == CommitModeBatch {
+				if err := s.Commit(ctx); err != nil {
+					if !yield(StreamRecord{}, err) {
+						return
+					}
+					return
+				}
+			}
+			if s.CommitMode == CommitModeNone {
+				s.Seq = s.LastSeq + 1
 			}
 		}
 	}

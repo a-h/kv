@@ -3,6 +3,7 @@ package kv
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -156,6 +157,9 @@ func TestStreamConsumer(t *testing.T) {
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return nil, getErr
 			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
+			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
 			},
@@ -193,6 +197,9 @@ func TestStreamConsumer(t *testing.T) {
 			},
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
 			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
@@ -233,6 +240,9 @@ func TestStreamConsumer(t *testing.T) {
 				callCount++
 				return nil, nil
 			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
+			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
 			},
@@ -270,6 +280,9 @@ func TestStreamConsumer(t *testing.T) {
 			},
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
 			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
@@ -317,6 +330,9 @@ func TestStreamConsumer(t *testing.T) {
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
+			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
 			},
@@ -326,6 +342,7 @@ func TestStreamConsumer(t *testing.T) {
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 		sr.LockExtendThreshold = 10 * time.Second
+		sr.CommitMode = CommitModeNone
 		sr.Locker.LockedUntil = time.Now().Add(1 * time.Second)
 
 		var gotErr bool
@@ -363,6 +380,9 @@ func TestStreamConsumer(t *testing.T) {
 			},
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
 			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
@@ -411,6 +431,9 @@ func TestStreamConsumer(t *testing.T) {
 				}
 				return []StreamRecord{}, nil
 			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
+			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
 			},
@@ -448,6 +471,9 @@ func TestStreamConsumer(t *testing.T) {
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
+			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
 			},
@@ -478,22 +504,44 @@ func TestStreamConsumer(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
+		var putCalled bool
+		var putKey string
+		var putVersion int
+		var putValue any
+		lastSeq := 0
+
 		store := &mockStore{
 			lockAcquireFunc: func(ctx context.Context, key, lockedBy string, timeout time.Duration) (bool, error) {
 				return true, nil
 			},
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
-				return Record{Version: 1}, true, nil
+				return Record{}, false, nil // No existing consumer state
 			},
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
-				return []StreamRecord{{Seq: 1}}, nil
+				// Only return the record once
+				if seq <= lastSeq {
+					return []StreamRecord{{Seq: 1}}, nil
+				}
+				return nil, nil // No more records
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				putCalled = true
+				putKey = key
+				putVersion = version
+				putValue = value
+				// Track the committed sequence
+				if status, ok := value.(StreamConsumerStatus); ok {
+					lastSeq = status.Seq - 1 // Seq is LastSeq + 1
+				}
+				return nil
 			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		streamName := "teststream-messages-returned"
+		sr := NewStreamConsumer(ctx, store, streamName, "consumer1")
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -517,6 +565,124 @@ func TestStreamConsumer(t *testing.T) {
 		case <-time.After(50 * time.Millisecond):
 			t.Error("expected a message, but got none")
 		}
+
+		// Give a moment for the commit to happen
+		time.Sleep(10 * time.Millisecond)
+
+		// Verify commit was called
+		if !putCalled {
+			t.Error("expected commit (putFunc) to be called, but it wasn't")
+		}
+		expectedKey := "github.com/a-h/kv/stream/" + streamName
+		if putKey != expectedKey {
+			t.Errorf("expected putKey to be %s, got %s", expectedKey, putKey)
+		}
+		if putVersion != 0 { // Version should start at 0 for new consumer
+			t.Errorf("expected putVersion to be 0, got %d", putVersion)
+		}
+
+		// Verify the consumer status was written correctly
+		if status, ok := putValue.(StreamConsumerStatus); ok {
+			if status.Name != streamName {
+				t.Errorf("expected status.Name to be %s, got %s", streamName, status.Name)
+			}
+			if status.Seq != 2 { // Should be LastSeq + 1 = 1 + 1 = 2
+				t.Errorf("expected status.Seq to be 2, got %d", status.Seq)
+			}
+		} else {
+			t.Errorf("expected putValue to be StreamConsumerStatus, got %T", putValue)
+		}
+	})
+	t.Run("Commit modes work correctly", func(t *testing.T) {
+		testCases := []struct {
+			name            string
+			commitMode      CommitMode
+			recordCount     int
+			expectedCommits int
+		}{
+			{"none mode never commits", CommitModeNone, 3, 0},
+			{"batch mode commits once per batch", CommitModeBatch, 3, 1},
+			{"all mode commits for each record", CommitModeAll, 3, 3},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+
+				var commitCount int
+				var records []StreamRecord
+				for i := 0; i < tc.recordCount; i++ {
+					records = append(records, StreamRecord{Seq: i + 1})
+				}
+				lastSeq := 0
+
+				store := &mockStore{
+					lockAcquireFunc: func(ctx context.Context, key, lockedBy string, timeout time.Duration) (bool, error) {
+						return true, nil
+					},
+					getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
+						return Record{}, false, nil // No existing consumer state
+					},
+					streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+						// Only return records if we haven't processed them yet
+						if seq <= lastSeq {
+							var result []StreamRecord
+							for _, r := range records {
+								if r.Seq > lastSeq {
+									result = append(result, r)
+								}
+							}
+							return result, nil
+						}
+						return nil, nil // No more records
+					},
+					putFunc: func(ctx context.Context, key string, version int, value any) error {
+						commitCount++
+						// Track the committed sequence
+						if status, ok := value.(StreamConsumerStatus); ok {
+							lastSeq = status.Seq - 1 // Seq is LastSeq + 1
+						}
+						return nil
+					},
+					deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
+						return 0, nil
+					},
+				}
+
+				streamName := "teststream-" + strings.ReplaceAll(tc.name, " ", "-")
+				sr := NewStreamConsumer(ctx, store, streamName, "consumer1")
+				sr.CommitMode = tc.commitMode
+				sr.MinBackoff = 1 * time.Millisecond
+				sr.MaxBackoff = 2 * time.Millisecond
+
+				processedCount := 0
+				iterCtx, iterCancel := context.WithTimeout(ctx, 200*time.Millisecond)
+				defer iterCancel()
+
+				for _, err := range sr.Read(iterCtx) {
+					if err != nil {
+						break
+					}
+					processedCount++
+					// Don't break immediately - let the iterator finish processing
+					if processedCount >= tc.recordCount {
+						// We've got all records, cancel context after a brief delay to allow commits
+						go func() {
+							time.Sleep(20 * time.Millisecond)
+							iterCancel()
+						}()
+					}
+				}
+
+				// Give more time for any pending commits
+				time.Sleep(50 * time.Millisecond)
+
+				if commitCount != tc.expectedCommits {
+					t.Errorf("expected %d commits, got %d", tc.expectedCommits, commitCount)
+				}
+			})
+		}
 	})
 	t.Run("Error on lock acquire propagates", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -532,6 +698,9 @@ func TestStreamConsumer(t *testing.T) {
 			},
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return nil, nil
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
 			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil
@@ -668,6 +837,9 @@ func TestStreamConsumer(t *testing.T) {
 			},
 			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
 			},
 			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
 				return 0, nil

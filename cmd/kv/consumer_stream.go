@@ -14,7 +14,7 @@ import (
 type ConsumerStreamCommand struct {
 	StreamName   string `arg:"" help:"The stream name." required:"true"`
 	ConsumerName string `arg:"" help:"The consumer name." required:"true"`
-	CommitMode   string `help:"Commit mode: 'none' (no commits), 'auto' (commit after processing records)." enum:"none,auto" default:"none"`
+	CommitMode   string `help:"Commit mode: 'none' (no commits), 'batch' (commit after each batch), 'all' (commit after each record)." enum:"none,batch,all" default:"none"`
 	Limit        int    `help:"The maximum number of records to fetch per batch." default:"10"`
 }
 
@@ -29,6 +29,7 @@ func (c *ConsumerStreamCommand) Run(ctx context.Context, g GlobalFlags) error {
 
 	consumer := kv.NewStreamConsumer(ctx, store, c.StreamName, c.ConsumerName)
 	consumer.Limit = c.Limit
+	consumer.CommitMode = kv.CommitMode(c.CommitMode)
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -67,12 +68,6 @@ func (c *ConsumerStreamCommand) Run(ctx context.Context, g GlobalFlags) error {
 		}
 		if err := enc.Encode(displayRecord); err != nil {
 			return err
-		}
-
-		if c.CommitMode == "auto" {
-			if err := consumer.Commit(ctx); err != nil {
-				return err
-			}
 		}
 	}
 
