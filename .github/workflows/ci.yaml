@@ -21,12 +21,6 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: secret
           POSTGRES_DB: testdb
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       rqlite:
         image: rqlite/rqlite:latest
         ports:
@@ -36,11 +30,6 @@ jobs:
         volumes:
           - ${{ github.workspace }}/auth.json:/mnt/rqlite/auth.json
           - ${{ github.workspace }}/.rqlite:/mnt/data
-        options: >-
-          --health-cmd "curl --fail http://localhost:4001/status || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
