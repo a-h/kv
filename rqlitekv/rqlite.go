@@ -587,25 +587,16 @@ func (rq *Rqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) (
 }
 
 func (rq *Rqlite) Stream(ctx context.Context, t kv.Type, seq int, limit int) (rows []kv.StreamRecord, err error) {
-	var stmt rqlitehttp.SQLStatement
-
-	if t == kv.TypeAll {
-		stmt = rqlitehttp.SQLStatement{
-			SQL: `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq order by seq limit :limit;`,
-			NamedParams: map[string]any{
-				"limit": limit,
-				"seq":   seq,
-			},
-		}
-	} else {
-		stmt = rqlitehttp.SQLStatement{
-			SQL: `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq and type = :type order by seq limit :limit;`,
-			NamedParams: map[string]any{
-				"limit": limit,
-				"seq":   seq,
-				"type":  string(t),
-			},
-		}
+	stmt := rqlitehttp.SQLStatement{
+		SQL: `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq order by seq limit :limit;`,
+		NamedParams: map[string]any{
+			"limit": limit,
+			"seq":   seq,
+		},
+	}
+	if t != kv.TypeAll {
+		stmt.SQL = `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq and type = :type order by seq limit :limit;`
+		stmt.NamedParams["type"] = string(t)
 	}
 
 	outputs, err := rq.QueryStream(ctx, rqlitehttp.SQLStatements{stmt})

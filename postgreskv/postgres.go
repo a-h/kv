@@ -141,22 +141,14 @@ func (p *Postgres) GetType(ctx context.Context, t kv.Type, offset, limit int) ([
 		limit = math.MaxInt
 	}
 
-	var sql string
-	var args pgx.NamedArgs
-
-	if t == kv.TypeAll {
-		sql = `SELECT key, version, value, type, created FROM kv ORDER BY key LIMIT @limit OFFSET @offset;`
-		args = pgx.NamedArgs{
-			"limit":  limit,
-			"offset": offset,
-		}
-	} else {
+	sql := `SELECT key, version, value, type, created FROM kv ORDER BY key LIMIT @limit OFFSET @offset;`
+	args := pgx.NamedArgs{
+		"limit":  limit,
+		"offset": offset,
+	}
+	if t != kv.TypeAll {
 		sql = `SELECT key, version, value, type, created FROM kv WHERE type = @type ORDER BY key LIMIT @limit OFFSET @offset;`
-		args = pgx.NamedArgs{
-			"type":   string(t),
-			"limit":  limit,
-			"offset": offset,
-		}
+		args["type"] = string(t)
 	}
 
 	return p.query(ctx, sql, args)

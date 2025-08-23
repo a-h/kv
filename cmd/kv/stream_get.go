@@ -10,8 +10,9 @@ import (
 )
 
 type StreamGetCommand struct {
-	Seq   int `arg:"" help:"Sequence number to start from." default:"0"`
-	Limit int `arg:"" help:"The maximum number of records to return, or -1 for no limit." default:"1000"`
+	Seq        int    `arg:"" help:"Sequence number to start from." default:"0"`
+	Limit      int    `arg:"" help:"The maximum number of records to return, or -1 for no limit." default:"1000"`
+	ObjectType string `help:"Filter by object type, or 'all' for all types." default:"all"`
 }
 
 func (c *StreamGetCommand) Run(ctx context.Context, g GlobalFlags) error {
@@ -20,7 +21,12 @@ func (c *StreamGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 		return fmt.Errorf("failed to create store: %w", err)
 	}
 
-	data, err := store.Stream(ctx, kv.TypeAll, c.Seq, c.Limit)
+	streamType := kv.TypeAll
+	if c.ObjectType != "all" {
+		streamType = kv.Type(c.ObjectType)
+	}
+
+	data, err := store.Stream(ctx, streamType, c.Seq, c.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to list data: %w", err)
 	}
@@ -55,6 +61,6 @@ func (c *StreamGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if len(data) > 0 {
 		lastSeq = data[len(data)-1].Seq
 	}
-	_, err = fmt.Printf("kv --type %q --connection %q stream get %d %d\n", g.Type, g.Connection, lastSeq+1, c.Limit)
+	_, err = fmt.Printf("kv --type %q --connection %q stream get %d %d --object-type %q\n", g.Type, g.Connection, lastSeq+1, c.Limit, c.ObjectType)
 	return err
 }
