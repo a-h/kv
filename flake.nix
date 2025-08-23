@@ -100,8 +100,11 @@
         pkgs.crane
         pkgs.gh
         pkgs.git
+        # Go tooling.
         pkgs.go
         pkgs.gopls
+        pkgs.golangci-lint
+        # Task runner.
         pkgs.xc
         pkgs.version
         # Database tools.

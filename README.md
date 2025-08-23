@@ -230,6 +230,18 @@ go build -o kv ./cmd/kv/
 go test ./...
 ```
 
+### test-cover
+
+```bash
+go test -coverprofile=coverage.out ./...
+```
+
+### lint
+
+```bash
+golangci-lint run
+```
+
 ### develop
 
 ```bash

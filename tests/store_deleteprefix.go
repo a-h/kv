@@ -10,12 +10,24 @@ import (
 func newDeletePrefixTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("Can delete data with matching prefix", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "deleteprefix", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "deleteprefix", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
-			store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"})
-			store.Put(ctx, "deleteprefix/c2", -1, Person{Name: "David"})
+			if err := store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/c2", -1, Person{Name: "David"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			deleted, err := store.DeletePrefix(ctx, "deleteprefix/c", 0, -1)
 			if err != nil {
@@ -33,12 +45,24 @@ func newDeletePrefixTest(ctx context.Context, store kv.Store) func(t *testing.T)
 			}
 		})
 		t.Run("Can delete all data", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
-			store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"})
-			store.Put(ctx, "otherprefix/c2", -1, Person{Name: "David"})
+			if err := store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "otherprefix/c2", -1, Person{Name: "David"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			deleted, err := store.DeletePrefix(ctx, "*", 0, -1)
 			if err != nil {
@@ -56,18 +80,32 @@ func newDeletePrefixTest(ctx context.Context, store kv.Store) func(t *testing.T)
 			}
 		})
 		t.Run("Deleting non-existent prefixes does not return an error", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			if _, err := store.DeletePrefix(ctx, "deleteprefix-does-not-exist", 0, -1); err != nil {
 				t.Errorf("unexpected error deleting data: %v", err)
 			}
 		})
 		t.Run("Can limit the number of records to delete", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
-			store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"})
+			if err := store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			deleted, err := store.DeletePrefix(ctx, "deleteprefix", 0, 2)
 			if err != nil {
@@ -86,11 +124,21 @@ func newDeletePrefixTest(ctx context.Context, store kv.Store) func(t *testing.T)
 			}
 		})
 		t.Run("Can offset the records to delete", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
-			store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"})
+			if err := store.Put(ctx, "deleteprefix/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleteprefix/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			deleted, err := store.DeletePrefix(ctx, "deleteprefix", 1, -1)
 			if err != nil {

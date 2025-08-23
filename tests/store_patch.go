@@ -10,7 +10,11 @@ import (
 func newPatchTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("Can patch data", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			// Create.
 			data := Person{
@@ -51,7 +55,11 @@ func newPatchTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Patching a non-existent record creates it", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			// Patch data.
 			patch := map[string]any{
@@ -76,7 +84,11 @@ func newPatchTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("The created field is set and not updated", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			data := map[string]any{
 				"key": "value",
@@ -116,7 +128,11 @@ func newPatchTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Patch fails if the version is not -1 and it does not match the existing value", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			// Put a test record so that we're at version 1.
 			data := map[string]any{

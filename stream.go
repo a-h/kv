@@ -100,7 +100,7 @@ func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error
 		var lockAcquired bool
 		defer func() {
 			if lockAcquired {
-				s.Locker.Unlock(ctx)
+				_ = s.Locker.Unlock(ctx)
 			}
 		}()
 

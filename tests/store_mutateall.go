@@ -89,7 +89,11 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 		}
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				defer store.DeletePrefix(ctx, "*", 0, -1)
+				defer func() {
+					if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+						t.Logf("cleanup error: %v", err)
+					}
+				}()
 
 				initial := []kv.Mutation{
 					kv.Put("mutateall-1", -1, mutateAllTestData{Value: "value-1"}),
@@ -131,7 +135,11 @@ func newMutateAllTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("Can put and patch data", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := []Person{
 				{
@@ -170,7 +178,11 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can overwrite existing data if version is set to -1", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{
 				Name:         "Alice",
@@ -201,7 +213,11 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can patch existing data if version is set to -1", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{
 				Name:         "Alice",
@@ -232,7 +248,11 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can not insert a record if one already exists and version is set to 0", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{Name: "Alice"}
 			err := store.Put(ctx, "put", -1, expected)
@@ -247,7 +267,11 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			expectRowsAffectedEqual(t, []int{0}, rowsAffected)
 		})
 		t.Run("Can overwrite existing data with specified version", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{
 				Name:         "Alice",
@@ -280,7 +304,11 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("The created field is set and not updated", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := []Person{
 				{
@@ -317,11 +345,14 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			expected[0].PhoneNumbers = nil
 			expected[1].PhoneNumbers = nil
 			expected[2].PhoneNumbers = nil
-			rowsAffected, err = store.MutateAll(ctx,
+			_, err = store.MutateAll(ctx,
 				kv.Put(expected[0].Name, -1, expected[0]),
 				kv.Patch(expected[1].Name, -1, expected[1]),
 				kv.Patch(expected[2].Name, -1, expected[2]),
 			)
+			if err != nil {
+				t.Fatalf("failed to mutate all: %v", err)
+			}
 
 			// Ensure that the created dates haven't changed.
 			updated, err := store.List(ctx, 0, 100)
@@ -342,7 +373,11 @@ func newPutPatchesTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("PutPatches is transactional", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			keys := []string{"mutateall-1", "mutateall-2", "mutateall-3"}
 			values := []mutateAllTestData{

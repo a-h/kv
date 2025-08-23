@@ -9,12 +9,22 @@ import (
 
 func newCountTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
-		defer store.DeletePrefix(ctx, "*", 0, -1)
+		defer func() {
+			if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+				t.Logf("cleanup error: %v", err)
+			}
+		}()
 
 		t.Run("Can count data", func(t *testing.T) {
-			store.Put(ctx, "count/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "count/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "count/c", -1, Person{Name: "Charlie"})
+			if err := store.Put(ctx, "count/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "count/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "count/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			count, err := store.Count(ctx)
 			if err != nil {

@@ -10,11 +10,21 @@ import (
 func newDeleteRangeTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("Can delete within a range", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
-			store.Put(ctx, "deleterange/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "deleterange/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "deleterange/c", -1, Person{Name: "Charlie"})
+			if err := store.Put(ctx, "deleterange/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			deleted, err := store.DeleteRange(ctx, "deleterange/a", "deleterange/c", 0, -1)
 			if err != nil {
@@ -40,12 +50,24 @@ func newDeleteRangeTest(ctx context.Context, store kv.Store) func(t *testing.T) 
 			}
 		})
 		t.Run("Can limit the number of records deleted", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
-			store.Put(ctx, "deleterange/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "deleterange/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "deleterange/c", -1, Person{Name: "Charlie"})
-			store.Put(ctx, "deleterange/d", -1, Person{Name: "David"})
+			if err := store.Put(ctx, "deleterange/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/d", -1, Person{Name: "David"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			deleted, err := store.DeleteRange(ctx, "deleterange/b", "deleterange/d", 0, 1)
 			if err != nil {
@@ -71,12 +93,24 @@ func newDeleteRangeTest(ctx context.Context, store kv.Store) func(t *testing.T) 
 			}
 		})
 		t.Run("Can offset the records deleted", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
-			store.Put(ctx, "deleterange/a", -1, Person{Name: "Alice"})
-			store.Put(ctx, "deleterange/b", -1, Person{Name: "Bob"})
-			store.Put(ctx, "deleterange/c", -1, Person{Name: "Charlie"})
-			store.Put(ctx, "deleterange/d", -1, Person{Name: "David"})
+			if err := store.Put(ctx, "deleterange/a", -1, Person{Name: "Alice"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/b", -1, Person{Name: "Bob"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/c", -1, Person{Name: "Charlie"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
+			if err := store.Put(ctx, "deleterange/d", -1, Person{Name: "David"}); err != nil {
+				t.Fatalf("failed to put data: %v", err)
+			}
 
 			deleted, err := store.DeleteRange(ctx, "deleterange/a", "deleterange/d", 1, -1)
 			if err != nil {

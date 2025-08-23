@@ -10,7 +10,11 @@ import (
 func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("Can put data", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{
 				Name:         "Alice",
@@ -33,7 +37,11 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can overwrite existing data if version is set to -1", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{
 				Name:         "Alice",
@@ -61,7 +69,11 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can not insert a record if one already exists and version is set to 0", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{Name: "Alice"}
 			err := store.Put(ctx, "put", -1, expected)
@@ -74,7 +86,11 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can overwrite existing data with specified version", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{
 				Name:         "Alice",
@@ -105,7 +121,11 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can use optimistic concurrency to ensure version being updated has not been changed", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			expected := Person{Name: "Alice"}
 			err := store.Put(ctx, "put", -1, expected)
@@ -119,7 +139,11 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("The created field is set and not updated", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			data := map[string]any{
 				"key": "value",
@@ -159,7 +183,11 @@ func newPutTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("The version number is incremented", func(t *testing.T) {
-			defer store.DeletePrefix(ctx, "*", 0, -1)
+			defer func() {
+				if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			data := map[string]any{}
 

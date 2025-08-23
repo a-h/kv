@@ -16,8 +16,16 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			t.Fatalf("could not trim stream prior to running test: %v", err)
 		}
 
-		defer store.DeletePrefix(ctx, "*", 0, -1)
-		defer store.StreamTrim(ctx, -1)
+		defer func() {
+			if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+				t.Logf("cleanup error: %v", err)
+			}
+		}()
+		defer func() {
+			if err := store.StreamTrim(ctx, -1); err != nil {
+				t.Logf("cleanup error: %v", err)
+			}
+		}()
 
 		expected := []Person{
 			{
@@ -57,7 +65,11 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			reader.Limit = 1
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
-			defer reader.Delete(ctx)
+			defer func() {
+				if err := reader.Delete(ctx); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			for i := range 3 {
 				var count int
@@ -90,7 +102,11 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			reader.Limit = 1
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
-			defer reader.Delete(ctx)
+			defer func() {
+				if err := reader.Delete(ctx); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
@@ -131,7 +147,11 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			reader := kv.NewStreamConsumer(ctx, store, "consumer-3", "test-consumer-3")
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
-			defer reader.Delete(ctx)
+			defer func() {
+				if err := reader.Delete(ctx); err != nil {
+					t.Logf("cleanup error: %v", err)
+				}
+			}()
 
 			var recordCount int
 			timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)

@@ -14,8 +14,16 @@ func newStreamTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			t.Fatalf("could not trim stream prior to running test: %v", err)
 		}
 
-		defer store.DeletePrefix(ctx, "*", 0, -1)
-		defer store.StreamTrim(ctx, -1)
+		defer func() {
+			if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+				t.Logf("cleanup error: %v", err)
+			}
+		}()
+		defer func() {
+			if err := store.StreamTrim(ctx, -1); err != nil {
+				t.Logf("cleanup error: %v", err)
+			}
+		}()
 
 		startSeq, err := store.StreamSeq(ctx)
 		if err != nil {

@@ -10,7 +10,11 @@ import (
 
 func newGetPrefixTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 	return func(t *testing.T) {
-		defer store.DeletePrefix(ctx, "*", 0, -1)
+		defer func() {
+			if _, err := store.DeletePrefix(ctx, "*", 0, -1); err != nil {
+				t.Logf("cleanup error: %v", err)
+			}
+		}()
 
 		expected := []Person{
 			{

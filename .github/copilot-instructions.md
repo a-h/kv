@@ -11,6 +11,7 @@ Write idiomatic Go code, e.g.:
 - **Remove obvious comments**: Don't include comments that describe what the code obviously does. Comments should explain why, not what.
 - **Use proper comment punctuation**: Go comments should be complete sentences with proper punctuation (periods at the end).
 - **No trailing comments**: Comments should be on their own lines, not trailing after statements.
+- **Don't add pointless comments: Code should describe itself.
 
 ### Variable Declaration
 - **Use idiomatic zero value initialization**: Use `var count int` instead of `count := 0`, and `var found bool` instead of `found := false` when initializing to zero values.
