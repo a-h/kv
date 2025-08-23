@@ -58,7 +58,7 @@ func (rq *Rqlite) Init(ctx context.Context) error {
 func (rq *Rqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
 	stmts := rqlitehttp.SQLStatements{
 		{
-			SQL: `select key, version, json(value) as value, created from kv where key = :key;`,
+			SQL: `select key, version, json(value) as value, type, created from kv where key = :key;`,
 			NamedParams: map[string]any{
 				"key": key,
 			},
@@ -83,7 +83,7 @@ func (rq *Rqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok b
 func (rq *Rqlite) GetPrefix(ctx context.Context, prefix string, offset, limit int) (rows []kv.Record, err error) {
 	stmts := rqlitehttp.SQLStatements{
 		{
-			SQL: `select key, version, json(value) as value, created from kv where key like :prefix order by key limit :limit offset :offset;`,
+			SQL: `select key, version, json(value) as value, type, created from kv where key like :prefix order by key limit :limit offset :offset;`,
 			NamedParams: map[string]any{
 				"prefix": prefix + "%",
 				"limit":  limit,
@@ -101,7 +101,7 @@ func (rq *Rqlite) GetPrefix(ctx context.Context, prefix string, offset, limit in
 func (rq *Rqlite) GetRange(ctx context.Context, from, to string, offset, limit int) (rows []kv.Record, err error) {
 	stmts := rqlitehttp.SQLStatements{
 		{
-			SQL: `select key, version, json(value) as value, created from kv where key >= :from and key < :to order by key limit :limit offset :offset;`,
+			SQL: `select key, version, json(value) as value, type, created from kv where key >= :from and key < :to order by key limit :limit offset :offset;`,
 			NamedParams: map[string]any{
 				"from":   from,
 				"to":     to,
@@ -120,7 +120,7 @@ func (rq *Rqlite) GetRange(ctx context.Context, from, to string, offset, limit i
 func (rq *Rqlite) List(ctx context.Context, start, limit int) (rows []kv.Record, err error) {
 	stmts := rqlitehttp.SQLStatements{
 		{
-			SQL: `select key, version, json(value) as value, created from kv order by key limit :limit offset :offset;`,
+			SQL: `select key, version, json(value) as value, type, created from kv order by key limit :limit offset :offset;`,
 			NamedParams: map[string]any{
 				"limit":  limit,
 				"offset": start,
@@ -130,6 +130,35 @@ func (rq *Rqlite) List(ctx context.Context, start, limit int) (rows []kv.Record,
 	outputs, err := rq.Query(ctx, stmts)
 	if err != nil {
 		return nil, fmt.Errorf("list: %w", err)
+	}
+	return outputs[0], nil
+}
+
+func (rq *Rqlite) GetType(ctx context.Context, t kv.Type, offset, limit int) (rows []kv.Record, err error) {
+	var stmt rqlitehttp.SQLStatement
+
+	if t == kv.TypeAll {
+		stmt = rqlitehttp.SQLStatement{
+			SQL: `select key, version, json(value) as value, type, created from kv order by key limit :limit offset :offset;`,
+			NamedParams: map[string]any{
+				"limit":  limit,
+				"offset": offset,
+			},
+		}
+	} else {
+		stmt = rqlitehttp.SQLStatement{
+			SQL: `select key, version, json(value) as value, type, created from kv where type = :type order by key limit :limit offset :offset;`,
+			NamedParams: map[string]any{
+				"type":   string(t),
+				"limit":  limit,
+				"offset": offset,
+			},
+		}
+	}
+
+	outputs, err := rq.Query(ctx, rqlitehttp.SQLStatements{stmt})
+	if err != nil {
+		return nil, fmt.Errorf("gettype: %w", err)
 	}
 	return outputs[0], nil
 }
@@ -334,33 +363,33 @@ func (rq *Rqlite) QueryScalarInt64(ctx context.Context, sql string, params map[s
 }
 
 func checkResultColumnsStream(result rqlitehttp.QueryResult) (err error) {
-	if len(result.Columns) != 6 {
-		return fmt.Errorf("stream: expected 6 columns, got %d", len(result.Columns))
+	if len(result.Columns) != 7 {
+		return fmt.Errorf("stream: expected 7 columns, got %d", len(result.Columns))
 	}
-	if result.Columns[0] != "seq" || result.Columns[1] != "action" || result.Columns[2] != "key" || result.Columns[3] != "version" || result.Columns[4] != "value" || result.Columns[5] != "created" {
-		return fmt.Errorf("stream: expected seq, action, key, version, value and created columns not found, got: %#v", result.Columns)
+	if result.Columns[0] != "seq" || result.Columns[1] != "action" || result.Columns[2] != "key" || result.Columns[3] != "version" || result.Columns[4] != "value" || result.Columns[5] != "type" || result.Columns[6] != "created" {
+		return fmt.Errorf("stream: expected seq, action, key, version, value, type and created columns not found, got: %#v", result.Columns)
 	}
 	return nil
 }
 
 func checkResultColumns(result rqlitehttp.QueryResult) (err error) {
-	if len(result.Columns) != 4 {
-		return fmt.Errorf("record: expected 4 columns, got %d", len(result.Columns))
+	if len(result.Columns) != 5 {
+		return fmt.Errorf("record: expected 5 columns, got %d", len(result.Columns))
 	}
-	if result.Columns[0] != "key" || result.Columns[1] != "version" || result.Columns[2] != "value" || result.Columns[3] != "created" {
-		return fmt.Errorf("record: expected id, key, version, value and created columns not found, got: %#v", result.Columns)
+	if result.Columns[0] != "key" || result.Columns[1] != "version" || result.Columns[2] != "value" || result.Columns[3] != "type" || result.Columns[4] != "created" {
+		return fmt.Errorf("record: expected key, version, value, type and created columns not found, got: %#v", result.Columns)
 	}
 	return nil
 }
 
 func newRowFromValues(values []any) (r kv.Record, err error) {
-	if len(values) != 4 {
-		return r, fmt.Errorf("row: expected 4 columns, got %d", len(values))
+	if len(values) != 5 {
+		return r, fmt.Errorf("row: expected 5 columns, got %d", len(values))
 	}
 	var ok bool
 	r.Key, ok = values[0].(string)
 	if !ok {
-		return r, fmt.Errorf("row: key: expected string, got %T", values[1])
+		return r, fmt.Errorf("row: key: expected string, got %T", values[0])
 	}
 	if r.Version, err = tryGetInt(values[1]); err != nil {
 		return r, fmt.Errorf("row: version: %w", err)
@@ -368,7 +397,11 @@ func newRowFromValues(values []any) (r kv.Record, err error) {
 	if values[2] != nil {
 		r.Value = []byte(values[2].(string))
 	}
-	r.Created, err = time.Parse(time.RFC3339Nano, values[3].(string))
+	r.Type, ok = values[3].(string)
+	if !ok {
+		return r, fmt.Errorf("row: type: expected string, got %T", values[3])
+	}
+	r.Created, err = time.Parse(time.RFC3339Nano, values[4].(string))
 	if err != nil {
 		return r, fmt.Errorf("row: failed to parse created time: %w", err)
 	}
@@ -376,8 +409,8 @@ func newRowFromValues(values []any) (r kv.Record, err error) {
 }
 
 func newStreamRowFromValues(values []any) (r kv.StreamRecord, err error) {
-	if len(values) != 6 {
-		return r, fmt.Errorf("streamrow: expected 6 columns, got %d", len(values))
+	if len(values) != 7 {
+		return r, fmt.Errorf("streamrow: expected 7 columns, got %d", len(values))
 	}
 	r.Seq, err = tryGetInt(values[0])
 	if err != nil {
@@ -460,19 +493,22 @@ func (rq *Rqlite) createPutMutationStatement(m kv.PutMutation) (s rqlitehttp.SQL
 	if err != nil {
 		return s, err
 	}
-	s.SQL = `insert into kv (key, version, value, created)
-values (:key, 1, jsonb(:value), :now)
+	typeName := kv.TypeOf(m.Value)
+	s.SQL = `insert into kv (key, version, value, type, created)
+values (:key, 1, jsonb(:value), :type, :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
       then kv.version + 1
 			else null -- Will fail, because version must not be null
     end,
-    value = excluded.value;`
+    value = excluded.value,
+    type = excluded.type;`
 	s.NamedParams = map[string]any{
 		"key":     m.Key,
 		"version": m.Version,
 		"value":   string(jsonValue),
+		"type":    typeName,
 		"now":     rq.Now().Format(time.RFC3339Nano),
 	}
 	return s, nil
@@ -483,19 +519,22 @@ func (rq *Rqlite) createPatchMutationStatement(m kv.PatchMutation) (s rqlitehttp
 	if err != nil {
 		return s, err
 	}
-	s.SQL = `insert into kv (key, version, value, created)
-values (:key, 1, jsonb(:value), :now)
+	typeName := kv.TypeOf(m.Value)
+	s.SQL = `insert into kv (key, version, value, type, created)
+values (:key, 1, jsonb(:value), :type, :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
       then kv.version + 1
       else null -- Will fail because version must not be null
     end,
-    value = jsonb_patch(kv.value, excluded.value);`
+    value = jsonb_patch(kv.value, excluded.value),
+    type = excluded.type;`
 	s.NamedParams = map[string]any{
 		"key":     m.Key,
 		"version": m.Version,
 		"value":   string(jsonValue),
+		"type":    typeName,
 		"now":     rq.Now().Format(time.RFC3339Nano),
 	}
 	return s, nil
@@ -547,17 +586,29 @@ func (rq *Rqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) (
 	return s, nil
 }
 
-func (rq *Rqlite) Stream(ctx context.Context, seq int, limit int) (rows []kv.StreamRecord, err error) {
-	stmts := rqlitehttp.SQLStatements{
-		{
-			SQL: `select seq, action, key, version, json(value) as value, created from stream where seq >= :seq limit :limit;`,
+func (rq *Rqlite) Stream(ctx context.Context, t kv.Type, seq int, limit int) (rows []kv.StreamRecord, err error) {
+	var stmt rqlitehttp.SQLStatement
+
+	if t == kv.TypeAll {
+		stmt = rqlitehttp.SQLStatement{
+			SQL: `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq order by seq limit :limit;`,
 			NamedParams: map[string]any{
 				"limit": limit,
 				"seq":   seq,
 			},
-		},
+		}
+	} else {
+		stmt = rqlitehttp.SQLStatement{
+			SQL: `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq and type = :type order by seq limit :limit;`,
+			NamedParams: map[string]any{
+				"limit": limit,
+				"seq":   seq,
+				"type":  string(t),
+			},
+		}
 	}
-	outputs, err := rq.QueryStream(ctx, stmts)
+
+	outputs, err := rq.QueryStream(ctx, rqlitehttp.SQLStatements{stmt})
 	if err != nil {
 		return nil, fmt.Errorf("stream: %w", err)
 	}

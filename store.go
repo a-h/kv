@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"time"
 )
 
@@ -14,11 +15,36 @@ func init() {
 	}
 }
 
+// TypeOf extracts the type name from a value using reflection.
+// For Entity Component System, this returns the struct name for struct types,
+// or the underlying type name for other types.
+func TypeOf(value any) string {
+	if value == nil {
+		return "nil"
+	}
+
+	t := reflect.TypeOf(value)
+
+	// Handle pointers by getting the element type.
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	// For structs, return just the name (not the full package path).
+	if t.Kind() == reflect.Struct {
+		return t.Name()
+	}
+
+	// For other types, return the string representation.
+	return t.String()
+}
+
 // Record is the record stored in the store prior to being unmarshaled.
 type Record struct {
 	Key     string    `json:"key"`
 	Version int       `json:"version"`
 	Value   []byte    `json:"value"`
+	Type    string    `json:"type"`
 	Created time.Time `json:"created"`
 }
 
@@ -28,6 +54,12 @@ const (
 	ActionCreate Action = "create"
 	ActionUpdate Action = "update"
 	ActionDelete Action = "delete"
+)
+
+type Type string
+
+const (
+	TypeAll Type = "all"
 )
 
 // StreamRecord represents a record in the stream.
@@ -64,6 +96,7 @@ type RecordOf[T any] struct {
 	Key     string    `json:"key"`
 	Version int       `json:"version"`
 	Value   T         `json:"value"`
+	Type    string    `json:"type"`
 	Created time.Time `json:"created"`
 }
 
@@ -78,6 +111,7 @@ func RecordsOf[T any](records []Record) (values []RecordOf[T], err error) {
 		}
 		values[i].Key = r.Key
 		values[i].Version = r.Version
+		values[i].Type = r.Type
 		values[i].Created = r.Created
 	}
 	return values, nil
@@ -93,6 +127,8 @@ type Store interface {
 	// GetRange gets all keys between the key from (inclusive) and to (exclusive).
 	// e.g. select key from kv where key >= 'a' and key < 'c';
 	GetRange(ctx context.Context, from, to string, offset, limit int) (rows []Record, err error)
+	// GetType gets all keys of a given type from the store.
+	GetType(ctx context.Context, t Type, offset, limit int) (rows []Record, err error)
 	// List gets all keys from the store, starting from the given offset and limiting the number of results to the given limit.
 	List(ctx context.Context, start, limit int) (rows []Record, err error)
 	// Put a key into the store. If the key already exists, it will update the value if the version matches, and increment the version.
@@ -125,7 +161,7 @@ type Store interface {
 	MutateAll(ctx context.Context, mutations ...Mutation) (rowsAffected []int, err error)
 	// Stream returns all mutations that have happened, in the order they were applied.
 	// It is used to follow changes to the store.
-	Stream(ctx context.Context, seq int, limit int) (rows []StreamRecord, err error)
+	Stream(ctx context.Context, t Type, seq int, limit int) (rows []StreamRecord, err error)
 	// StreamSeq returns the current latest sequence number of the stream.
 	StreamSeq(ctx context.Context) (seq int, err error)
 	// StreamTrim trims the stream to the given sequence number.

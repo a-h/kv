@@ -154,7 +154,7 @@ func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error
 				}
 				return
 			}
-			records, err := s.Store.Stream(ctx, s.Seq, s.Limit)
+			records, err := s.Store.Stream(ctx, TypeAll, s.Seq, s.Limit)
 			if err != nil {
 				if !yield(StreamRecord{}, fmt.Errorf("stream: failed to get records: %w", err)) {
 					return
@@ -309,7 +309,7 @@ func GetStreamConsumerRecords(ctx context.Context, store Store, streamName strin
 	if limit <= 0 {
 		limit = 10
 	}
-	records, err := store.Stream(ctx, cs.Seq, limit)
+	records, err := store.Stream(ctx, TypeAll, cs.Seq, limit)
 	if err != nil {
 		return nil, fmt.Errorf("stream: failed to get records: %w", err)
 	}

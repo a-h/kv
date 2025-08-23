@@ -48,7 +48,7 @@ func (s *Sqlite) Init(ctx context.Context) (err error) {
 }
 
 func (s *Sqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
-	sql := `select key, version, json(value) as value, created from kv where key = :key;`
+	sql := `select key, version, json(value) as value, type, created from kv where key = :key;`
 	args := map[string]any{
 		":key": key,
 	}
@@ -65,7 +65,7 @@ func (s *Sqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok bo
 }
 
 func (s *Sqlite) GetPrefix(ctx context.Context, prefix string, offset, limit int) (records []kv.Record, err error) {
-	sql := `select key, version, json(value) as value, created from kv where key like :prefix order by key limit :limit offset :offset;`
+	sql := `select key, version, json(value) as value, type, created from kv where key like :prefix order by key limit :limit offset :offset;`
 	args := map[string]any{
 		":prefix": prefix + "%",
 		":limit":  limit,
@@ -79,7 +79,7 @@ func (s *Sqlite) GetPrefix(ctx context.Context, prefix string, offset, limit int
 }
 
 func (s *Sqlite) GetRange(ctx context.Context, from, to string, offset, limit int) (records []kv.Record, err error) {
-	sql := `select key, version, json(value) as value, created from kv where key >= :from and key < :to order by key limit :limit offset :offset;`
+	sql := `select key, version, json(value) as value, type, created from kv where key >= :from and key < :to order by key limit :limit offset :offset;`
 	args := map[string]any{
 		":from":   from,
 		":to":     to,
@@ -94,7 +94,7 @@ func (s *Sqlite) GetRange(ctx context.Context, from, to string, offset, limit in
 }
 
 func (s *Sqlite) List(ctx context.Context, start, limit int) (records []kv.Record, err error) {
-	sql := `select key, version, json(value) as value, created from kv order by key limit :limit offset :offset;`
+	sql := `select key, version, json(value) as value, type, created from kv order by key limit :limit offset :offset;`
 	args := map[string]any{
 		":offset": start,
 		":limit":  limit,
@@ -102,6 +102,32 @@ func (s *Sqlite) List(ctx context.Context, start, limit int) (records []kv.Recor
 	records, err = s.Query(ctx, sql, args)
 	if err != nil {
 		return nil, fmt.Errorf("list: %w", err)
+	}
+	return records, nil
+}
+
+func (s *Sqlite) GetType(ctx context.Context, t kv.Type, offset, limit int) (records []kv.Record, err error) {
+	var sql string
+	var args map[string]any
+
+	if t == kv.TypeAll {
+		sql = `select key, version, json(value) as value, type, created from kv order by key limit :limit offset :offset;`
+		args = map[string]any{
+			":limit":  limit,
+			":offset": offset,
+		}
+	} else {
+		sql = `select key, version, json(value) as value, type, created from kv where type = :type order by key limit :limit offset :offset;`
+		args = map[string]any{
+			":type":   string(t),
+			":limit":  limit,
+			":offset": offset,
+		}
+	}
+
+	records, err = s.Query(ctx, sql, args)
+	if err != nil {
+		return nil, fmt.Errorf("gettype: %w", err)
 	}
 	return records, nil
 }
@@ -237,6 +263,7 @@ func (s *Sqlite) Query(ctx context.Context, sql string, args map[string]any) (ro
 				Key:     stmt.GetText("key"),
 				Version: int(stmt.GetInt64("version")),
 				Value:   valueBytes,
+				Type:    stmt.GetText("type"),
 				Created: created,
 			}
 			rows = append(rows, r)
@@ -273,6 +300,7 @@ func (s *Sqlite) QueryStream(ctx context.Context, sql string, args map[string]an
 					Key:     stmt.GetText("key"),
 					Version: int(stmt.GetInt64("version")),
 					Value:   valueBytes,
+					Type:    stmt.GetText("type"),
 					Created: created,
 				},
 			}
@@ -378,19 +406,22 @@ func (s *Sqlite) createPutMutationStatement(m kv.PutMutation) (stmt SQLStatement
 	if err != nil {
 		return stmt, err
 	}
-	stmt.SQL = `insert into kv (key, version, value, created)
-values (:key, 1, jsonb(:value), :now)
+	typeName := kv.TypeOf(m.Value)
+	stmt.SQL = `insert into kv (key, version, value, type, created)
+values (:key, 1, jsonb(:value), :type, :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
       then kv.version + 1
 			else null -- Will fail, because version must not be null
     end,
-    value = excluded.value;`
+    value = excluded.value,
+    type = excluded.type;`
 	stmt.NamedParams = map[string]any{
 		":key":     m.Key,
 		":version": m.Version,
 		":value":   string(jsonValue),
+		":type":    typeName,
 		":now":     s.Now().Format(time.RFC3339Nano),
 	}
 	return stmt, nil
@@ -401,19 +432,22 @@ func (s *Sqlite) createPatchMutationStatement(m kv.PatchMutation) (stmt SQLState
 	if err != nil {
 		return stmt, err
 	}
-	stmt.SQL = `insert into kv (key, version, value, created)
-values (:key, 1, jsonb(:value), :now)
+	typeName := kv.TypeOf(m.Value)
+	stmt.SQL = `insert into kv (key, version, value, type, created)
+values (:key, 1, jsonb(:value), :type, :now)
 on conflict(key) do update 
 set version = case 
       when (:version = -1 or version = :version)
       then kv.version + 1
       else null -- Will fail because version must not be null
     end,
-    value = jsonb_patch(kv.value, excluded.value);`
+    value = jsonb_patch(kv.value, excluded.value),
+    type = excluded.type;`
 	stmt.NamedParams = map[string]any{
 		":key":     m.Key,
 		":version": m.Version,
 		":value":   string(jsonValue),
+		":type":    typeName,
 		":now":     s.Now().Format(time.RFC3339Nano),
 	}
 	return stmt, nil
@@ -458,12 +492,21 @@ func (s *Sqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) (s
 	return stmt, nil
 }
 
-func (s *Sqlite) Stream(ctx context.Context, seq int, limit int) (records []kv.StreamRecord, err error) {
-	sql := `select seq, action, key, version, json(value) as value, created from stream where seq >= :seq limit :limit;`
+func (s *Sqlite) Stream(ctx context.Context, t kv.Type, seq int, limit int) (records []kv.StreamRecord, err error) {
+	sql := `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq order by seq limit :limit;`
 	args := map[string]any{
 		":seq":   seq,
 		":limit": limit,
 	}
+	if t != kv.TypeAll {
+		sql = `select seq, action, key, version, json(value) as value, type, created from stream where seq >= :seq and type = :type order by seq limit :limit;`
+		args = map[string]any{
+			":seq":   seq,
+			":type":  string(t),
+			":limit": limit,
+		}
+	}
+
 	records, err = s.QueryStream(ctx, sql, args)
 	if err != nil {
 		return nil, fmt.Errorf("stream: %w", err)

@@ -16,7 +16,7 @@ func (m *mockStore) Init(ctx context.Context) error {
 type mockStore struct {
 	lockAcquireFunc  func(ctx context.Context, key, lockedBy string, timeout time.Duration) (bool, error)
 	lockReleaseFunc  func(ctx context.Context, key, lockedBy string) error
-	streamFunc       func(ctx context.Context, seq, limit int) ([]StreamRecord, error)
+	streamFunc       func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error)
 	putFunc          func(ctx context.Context, key string, version int, value any) error
 	getFunc          func(ctx context.Context, key string, value any) (Record, bool, error)
 	deleteFunc       func(ctx context.Context, keys ...string) (int, error)
@@ -25,6 +25,7 @@ type mockStore struct {
 	countRangeFunc   func(ctx context.Context, from, to string) (int, error)
 	getPrefixFunc    func(ctx context.Context, prefix string, offset, limit int) ([]Record, error)
 	getRangeFunc     func(ctx context.Context, from, to string, offset, limit int) ([]Record, error)
+	getTypeFunc      func(ctx context.Context, t Type, offset, limit int) ([]Record, error)
 	listFunc         func(ctx context.Context, start, limit int) ([]Record, error)
 	deletePrefixFunc func(ctx context.Context, prefix string, offset, limit int) (int, error)
 	deleteRangeFunc  func(ctx context.Context, from, to string, offset, limit int) (int, error)
@@ -51,8 +52,8 @@ func (m *mockStore) LockRelease(ctx context.Context, key, lockedBy string) error
 	}
 	return nil
 }
-func (m *mockStore) Stream(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
-	return m.streamFunc(ctx, seq, limit)
+func (m *mockStore) Stream(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
+	return m.streamFunc(ctx, t, seq, limit)
 }
 func (m *mockStore) Put(ctx context.Context, key string, version int, value any) error {
 	return m.putFunc(ctx, key, version, value)
@@ -90,6 +91,12 @@ func (m *mockStore) GetPrefix(ctx context.Context, prefix string, offset, limit 
 func (m *mockStore) GetRange(ctx context.Context, from, to string, offset, limit int) ([]Record, error) {
 	if m.getRangeFunc != nil {
 		return m.getRangeFunc(ctx, from, to, offset, limit)
+	}
+	return nil, nil
+}
+func (m *mockStore) GetType(ctx context.Context, t Type, offset, limit int) ([]Record, error) {
+	if m.getTypeFunc != nil {
+		return m.getTypeFunc(ctx, t, offset, limit)
 	}
 	return nil, nil
 }
@@ -154,7 +161,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return nil, getErr
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
@@ -195,7 +202,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{}, false, stateErr
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
@@ -236,7 +243,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				callCount++
 				return nil, nil
 			},
@@ -278,7 +285,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
@@ -327,7 +334,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
@@ -378,7 +385,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
@@ -424,7 +431,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				callCount++
 				if callCount == 1 {
 					return []StreamRecord{{Seq: 1}}, nil
@@ -468,7 +475,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
@@ -517,7 +524,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{}, false, nil // No existing consumer state
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				// Only return the record once
 				if seq <= lastSeq {
 					return []StreamRecord{{Seq: 1}}, nil
@@ -624,7 +631,7 @@ func TestStreamConsumer(t *testing.T) {
 					getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 						return Record{}, false, nil // No existing consumer state
 					},
-					streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+					streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 						// Only return records if we haven't processed them yet
 						if seq <= lastSeq {
 							var result []StreamRecord
@@ -696,7 +703,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return nil, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
@@ -753,7 +760,7 @@ func TestStreamConsumer(t *testing.T) {
 				}
 				return Record{Version: 0}, false, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				if seq == 0 {
 					return []StreamRecord{{Seq: 1}, {Seq: 2}}, nil
 				}
@@ -835,7 +842,7 @@ func TestStreamConsumer(t *testing.T) {
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
 				return Record{Version: 1}, true, nil
 			},
-			streamFunc: func(ctx context.Context, seq, limit int) ([]StreamRecord, error) {
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
 				return []StreamRecord{{Seq: 1}}, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {

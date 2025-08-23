@@ -20,7 +20,7 @@ func (c *StreamGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 		return fmt.Errorf("failed to create store: %w", err)
 	}
 
-	data, err := store.Stream(ctx, c.Seq, c.Limit)
+	data, err := store.Stream(ctx, kv.TypeAll, c.Seq, c.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to list data: %w", err)
 	}

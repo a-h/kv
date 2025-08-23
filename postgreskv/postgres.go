@@ -64,13 +64,13 @@ func (p *Postgres) Init(ctx context.Context) (err error) {
 }
 
 func (p *Postgres) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
-	rows, err := p.Pool.Query(ctx, `SELECT key, version, value, created FROM kv WHERE key = @key;`, pgx.NamedArgs{"key": key})
+	rows, err := p.Pool.Query(ctx, `SELECT key, version, value, type, created FROM kv WHERE key = @key;`, pgx.NamedArgs{"key": key})
 	if err != nil {
 		return r, false, fmt.Errorf("get: query: %w", err)
 	}
 	defer rows.Close()
 	if rows.Next() {
-		if err = rows.Scan(&r.Key, &r.Version, &r.Value, &r.Created); err != nil {
+		if err = rows.Scan(&r.Key, &r.Version, &r.Value, &r.Type, &r.Created); err != nil {
 			return r, false, fmt.Errorf("get: scan: %w", err)
 		}
 		ok = true
@@ -92,7 +92,7 @@ func (p *Postgres) GetPrefix(ctx context.Context, prefix string, offset, limit i
 	if limit < 0 {
 		limit = math.MaxInt
 	}
-	sql := `SELECT key, version, value, created FROM kv WHERE key LIKE @prefix ORDER BY key LIMIT @limit OFFSET @offset;`
+	sql := `SELECT key, version, value, type, created FROM kv WHERE key LIKE @prefix ORDER BY key LIMIT @limit OFFSET @offset;`
 	args := pgx.NamedArgs{
 		"prefix": prefix + "%",
 		"limit":  limit,
@@ -108,7 +108,7 @@ func (p *Postgres) GetRange(ctx context.Context, from, to string, offset, limit 
 	if limit < 0 {
 		limit = math.MaxInt
 	}
-	sql := `SELECT key, version, value, created FROM kv WHERE key >= @from AND key < @to ORDER BY key LIMIT @limit OFFSET @offset;`
+	sql := `SELECT key, version, value, type, created FROM kv WHERE key >= @from AND key < @to ORDER BY key LIMIT @limit OFFSET @offset;`
 	args := pgx.NamedArgs{
 		"from":   from,
 		"to":     to,
@@ -125,11 +125,40 @@ func (p *Postgres) List(ctx context.Context, offset, limit int) ([]kv.Record, er
 	if limit < 0 {
 		limit = math.MaxInt
 	}
-	sql := `SELECT key, version, value, created FROM kv ORDER BY key LIMIT @limit OFFSET @offset;`
+	sql := `SELECT key, version, value, type, created FROM kv ORDER BY key LIMIT @limit OFFSET @offset;`
 	args := pgx.NamedArgs{
 		"limit":  limit,
 		"offset": offset,
 	}
+	return p.query(ctx, sql, args)
+}
+
+func (p *Postgres) GetType(ctx context.Context, t kv.Type, offset, limit int) ([]kv.Record, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit < 0 {
+		limit = math.MaxInt
+	}
+
+	var sql string
+	var args pgx.NamedArgs
+
+	if t == kv.TypeAll {
+		sql = `SELECT key, version, value, type, created FROM kv ORDER BY key LIMIT @limit OFFSET @offset;`
+		args = pgx.NamedArgs{
+			"limit":  limit,
+			"offset": offset,
+		}
+	} else {
+		sql = `SELECT key, version, value, type, created FROM kv WHERE type = @type ORDER BY key LIMIT @limit OFFSET @offset;`
+		args = pgx.NamedArgs{
+			"type":   string(t),
+			"limit":  limit,
+			"offset": offset,
+		}
+	}
+
 	return p.query(ctx, sql, args)
 }
 
@@ -273,7 +302,7 @@ func (p *Postgres) query(ctx context.Context, sql string, args pgx.NamedArgs) (r
 	defer rows.Close()
 	for rows.Next() {
 		var r kv.Record
-		if err = rows.Scan(&r.Key, &r.Version, &r.Value, &r.Created); err != nil {
+		if err = rows.Scan(&r.Key, &r.Version, &r.Value, &r.Type, &r.Created); err != nil {
 			return nil, fmt.Errorf("query scan: %w", err)
 		}
 		records = append(records, r)
@@ -292,7 +321,7 @@ func (p *Postgres) queryStream(ctx context.Context, sql string, args pgx.NamedAr
 	defer rows.Close()
 	for rows.Next() {
 		var r kv.StreamRecord
-		if err = rows.Scan(&r.Seq, &r.Action, &r.Record.Key, &r.Record.Version, &r.Record.Value, &r.Record.Created); err != nil {
+		if err = rows.Scan(&r.Seq, &r.Action, &r.Record.Key, &r.Record.Version, &r.Record.Value, &r.Record.Type, &r.Record.Created); err != nil {
 			return nil, fmt.Errorf("query scan: %w", err)
 		}
 		records = append(records, r)
@@ -316,16 +345,19 @@ func (p *Postgres) createPutMutationStatement(m kv.PutMutation) (SQLStatement, e
 	if err != nil {
 		return SQLStatement{}, err
 	}
+	typeName := kv.TypeOf(m.Value)
 	return SQLStatement{
-		SQL: `INSERT INTO kv (key, version, value, created)
-VALUES (@key, 1, @value::jsonb, @now)
+		SQL: `INSERT INTO kv (key, version, value, type, created)
+VALUES (@key, 1, @value::jsonb, @type, @now)
 ON CONFLICT(key) DO UPDATE
 SET version = CASE WHEN (@version = -1 OR kv.version = @version) THEN kv.version + 1 ELSE NULL END,
-    value = EXCLUDED.value;`,
+    value = EXCLUDED.value,
+    type = EXCLUDED.type;`,
 		NamedParams: pgx.NamedArgs{
 			"key":     m.Key,
 			"version": m.Version,
 			"value":   string(jsonValue),
+			"type":    typeName,
 			"now":     p.Now(),
 		},
 	}, nil
@@ -336,16 +368,19 @@ func (p *Postgres) createPatchMutationStatement(m kv.PatchMutation) (SQLStatemen
 	if err != nil {
 		return SQLStatement{}, err
 	}
+	typeName := kv.TypeOf(m.Value)
 	return SQLStatement{
-		SQL: `INSERT INTO kv (key, version, value, created)
-VALUES (@key, 1, @value::jsonb, @now)
+		SQL: `INSERT INTO kv (key, version, value, type, created)
+VALUES (@key, 1, @value::jsonb, @type, @now)
 ON CONFLICT(key) DO UPDATE
 SET version = CASE WHEN (@version = -1 OR kv.version = @version) THEN kv.version + 1 ELSE NULL END,
-    value = kv.value || EXCLUDED.value;`,
+    value = kv.value || EXCLUDED.value,
+    type = EXCLUDED.type;`,
 		NamedParams: pgx.NamedArgs{
 			"key":     m.Key,
 			"version": m.Version,
 			"value":   string(jsonValue),
+			"type":    typeName,
 			"now":     p.Now(),
 		},
 	}, nil
@@ -420,18 +455,32 @@ func (p *Postgres) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) 
 	}, nil
 }
 
-func (p *Postgres) Stream(ctx context.Context, seq int, limit int) (records []kv.StreamRecord, err error) {
+func (p *Postgres) Stream(ctx context.Context, t kv.Type, seq int, limit int) (records []kv.StreamRecord, err error) {
 	if seq < 0 {
 		seq = 0
 	}
 	if limit < 0 {
 		limit = 100
 	}
-	sql := `SELECT seq, action, key, version, value, created FROM stream WHERE seq >= @seq LIMIT @limit;`
-	args := pgx.NamedArgs{
-		"seq":   seq,
-		"limit": limit,
+
+	var sql string
+	var args pgx.NamedArgs
+
+	if t == kv.TypeAll {
+		sql = `SELECT seq, action, key, version, value, type, created FROM stream WHERE seq >= @seq ORDER BY seq LIMIT @limit;`
+		args = pgx.NamedArgs{
+			"seq":   seq,
+			"limit": limit,
+		}
+	} else {
+		sql = `SELECT seq, action, key, version, value, type, created FROM stream WHERE seq >= @seq AND type = @type ORDER BY seq LIMIT @limit;`
+		args = pgx.NamedArgs{
+			"seq":   seq,
+			"type":  string(t),
+			"limit": limit,
+		}
 	}
+
 	return p.queryStream(ctx, sql, args)
 }
 

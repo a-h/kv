@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS kv (
    key TEXT PRIMARY KEY,
    version INTEGER NOT NULL,
    value JSONB NOT NULL,
+   type TEXT NOT NULL,
    created TIMESTAMPTZ NOT NULL
 );
 
@@ -13,6 +14,7 @@ CREATE TABLE IF NOT EXISTS stream (
     key      TEXT NOT NULL,
     version  INTEGER NOT NULL,
     value    JSONB NOT NULL,
+    type     TEXT NOT NULL,
     created  TIMESTAMPTZ NOT NULL
 );
 
@@ -20,8 +22,8 @@ CREATE TABLE IF NOT EXISTS stream (
 CREATE OR REPLACE FUNCTION kv_stream_insert_fn()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO stream (action, key, version, value, created)
-    VALUES ('create', NEW.key, NEW.version, NEW.value, NEW.created);
+    INSERT INTO stream (action, key, version, value, type, created)
+    VALUES ('create', NEW.key, NEW.version, NEW.value, NEW.type, NEW.created);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -30,8 +32,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION kv_stream_update_fn()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO stream (action, key, version, value, created)
-    VALUES ('update', NEW.key, NEW.version, NEW.value, NEW.created);
+    INSERT INTO stream (action, key, version, value, type, created)
+    VALUES ('update', NEW.key, NEW.version, NEW.value, NEW.type, NEW.created);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -40,8 +42,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION kv_stream_delete_fn()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO stream (action, key, version, value, created)
-    VALUES ('delete', OLD.key, OLD.version, OLD.value, OLD.created);
+    INSERT INTO stream (action, key, version, value, type, created)
+    VALUES ('delete', OLD.key, OLD.version, OLD.value, OLD.type, OLD.created);
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
