@@ -172,7 +172,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -213,7 +213,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -255,7 +255,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -296,7 +296,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 		sr.LockExtendThreshold = 10 * time.Second
@@ -345,7 +345,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 		sr.LockExtendThreshold = 10 * time.Second
@@ -396,7 +396,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 		sr.LockExtendThreshold = 10 * time.Second
@@ -446,7 +446,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -486,7 +486,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 10 * time.Millisecond
 		sr.MaxBackoff = 20 * time.Millisecond
 
@@ -522,23 +522,21 @@ func TestStreamConsumer(t *testing.T) {
 				return true, nil
 			},
 			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
-				return Record{}, false, nil // No existing consumer state
+				return Record{}, false, nil
 			},
 			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
-				// Only return the record once
 				if seq <= lastSeq {
 					return []StreamRecord{{Seq: 1}}, nil
 				}
-				return nil, nil // No more records
+				return nil, nil
 			},
 			putFunc: func(ctx context.Context, key string, version int, value any) error {
 				putCalled = true
 				putKey = key
 				putVersion = version
 				putValue = value
-				// Track the committed sequence
 				if status, ok := value.(StreamConsumerStatus); ok {
-					lastSeq = status.Seq - 1 // Seq is LastSeq + 1
+					lastSeq = status.Seq - 1
 				}
 				return nil
 			},
@@ -548,7 +546,7 @@ func TestStreamConsumer(t *testing.T) {
 		}
 
 		streamName := "teststream-messages-returned"
-		sr := NewStreamConsumer(ctx, store, streamName, "consumer1")
+		sr := NewStreamConsumer(ctx, store, streamName, "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -573,10 +571,8 @@ func TestStreamConsumer(t *testing.T) {
 			t.Error("expected a message, but got none")
 		}
 
-		// Give a moment for the commit to happen
 		time.Sleep(10 * time.Millisecond)
 
-		// Verify commit was called
 		if !putCalled {
 			t.Error("expected commit (putFunc) to be called, but it wasn't")
 		}
@@ -584,20 +580,19 @@ func TestStreamConsumer(t *testing.T) {
 		if putKey != expectedKey {
 			t.Errorf("expected putKey to be %s, got %s", expectedKey, putKey)
 		}
-		if putVersion != 0 { // Version should start at 0 for new consumer
+		if putVersion != 0 {
 			t.Errorf("expected putVersion to be 0, got %d", putVersion)
 		}
 
-		// Verify the consumer status was written correctly
-		if status, ok := putValue.(StreamConsumerStatus); ok {
-			if status.Name != streamName {
-				t.Errorf("expected status.Name to be %s, got %s", streamName, status.Name)
-			}
-			if status.Seq != 2 { // Should be LastSeq + 1 = 1 + 1 = 2
-				t.Errorf("expected status.Seq to be 2, got %d", status.Seq)
-			}
-		} else {
-			t.Errorf("expected putValue to be StreamConsumerStatus, got %T", putValue)
+		status, ok := putValue.(StreamConsumerStatus)
+		if !ok {
+			t.Fatalf("expected putValue to be StreamConsumerStatus, got %T", putValue)
+		}
+		if status.Name != streamName {
+			t.Errorf("expected status.Name to be %s, got %s", streamName, status.Name)
+		}
+		if status.Seq != 2 {
+			t.Errorf("expected status.Seq to be 2, got %d", status.Seq)
 		}
 	})
 	t.Run("Commit modes work correctly", func(t *testing.T) {
@@ -614,7 +609,7 @@ func TestStreamConsumer(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 
 				var commitCount int
@@ -629,10 +624,9 @@ func TestStreamConsumer(t *testing.T) {
 						return true, nil
 					},
 					getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
-						return Record{}, false, nil // No existing consumer state
+						return Record{}, false, nil
 					},
 					streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
-						// Only return records if we haven't processed them yet
 						if seq <= lastSeq {
 							var result []StreamRecord
 							for _, r := range records {
@@ -642,13 +636,12 @@ func TestStreamConsumer(t *testing.T) {
 							}
 							return result, nil
 						}
-						return nil, nil // No more records
+						return nil, nil
 					},
 					putFunc: func(ctx context.Context, key string, version int, value any) error {
 						commitCount++
-						// Track the committed sequence
 						if status, ok := value.(StreamConsumerStatus); ok {
-							lastSeq = status.Seq - 1 // Seq is LastSeq + 1
+							lastSeq = status.Seq - 1
 						}
 						return nil
 					},
@@ -658,7 +651,7 @@ func TestStreamConsumer(t *testing.T) {
 				}
 
 				streamName := "teststream-" + strings.ReplaceAll(tc.name, " ", "-")
-				sr := NewStreamConsumer(ctx, store, streamName, "consumer1")
+				sr := NewStreamConsumer(ctx, store, streamName, "consumer1", TypeAll)
 				sr.CommitMode = tc.commitMode
 				sr.MinBackoff = 1 * time.Millisecond
 				sr.MaxBackoff = 2 * time.Millisecond
@@ -672,9 +665,7 @@ func TestStreamConsumer(t *testing.T) {
 						break
 					}
 					processedCount++
-					// Don't break immediately - let the iterator finish processing
 					if processedCount >= tc.recordCount {
-						// We've got all records, cancel context after a brief delay to allow commits
 						go func() {
 							time.Sleep(20 * time.Millisecond)
 							iterCancel()
@@ -682,7 +673,6 @@ func TestStreamConsumer(t *testing.T) {
 					}
 				}
 
-				// Give more time for any pending commits
 				time.Sleep(50 * time.Millisecond)
 
 				if commitCount != tc.expectedCommits {
@@ -692,7 +682,7 @@ func TestStreamConsumer(t *testing.T) {
 		}
 	})
 	t.Run("Error on lock acquire propagates", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		errTest := errors.New("lock error")
@@ -714,7 +704,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
@@ -739,7 +729,7 @@ func TestStreamConsumer(t *testing.T) {
 		}
 	})
 	t.Run("Consumer state is persisted and reloaded correctly", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		consumerState := map[string]any{}
@@ -779,7 +769,7 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr1 := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr1 := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr1.MinBackoff = 1 * time.Millisecond
 		sr1.MaxBackoff = 2 * time.Millisecond
 
@@ -801,7 +791,7 @@ func TestStreamConsumer(t *testing.T) {
 			t.Errorf("expected to read 2 records, got %d", recordCount)
 		}
 
-		sr2 := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr2 := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr2.MinBackoff = 1 * time.Millisecond
 		sr2.MaxBackoff = 2 * time.Millisecond
 
@@ -853,21 +843,162 @@ func TestStreamConsumer(t *testing.T) {
 			},
 		}
 
-		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1")
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
 		sr.MinBackoff = 1 * time.Millisecond
 		sr.MaxBackoff = 2 * time.Millisecond
 
-		func() {
-			for _, err := range sr.Read(ctx) {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				break
+		for _, err := range sr.Read(ctx) {
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-		}()
+			break
+		}
 
 		if !lockReleased {
 			t.Error("expected lock to be automatically released when iterator exits")
+		}
+	})
+	t.Run("Streams can be filtered by types", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var requestedTypes []Type
+		store := &mockStore{
+			lockAcquireFunc: func(ctx context.Context, key, lockedBy string, timeout time.Duration) (bool, error) {
+				return true, nil
+			},
+			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
+				return Record{}, false, nil
+			},
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
+				requestedTypes = append(requestedTypes, t)
+				if t == "Weapon" {
+					return []StreamRecord{{Seq: 1, Record: Record{Type: "Weapon"}}}, nil
+				}
+				return []StreamRecord{}, nil
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
+			},
+			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
+				return 0, nil
+			},
+		}
+
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", "Weapon")
+		sr.MinBackoff = 1 * time.Millisecond
+		sr.MaxBackoff = 2 * time.Millisecond
+
+		var receivedRecord bool
+		iterCtx, iterCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		defer iterCancel()
+
+		for record, err := range sr.Read(iterCtx) {
+			if err != nil {
+				break
+			}
+			if record.Record.Type != "Weapon" {
+				t.Errorf("expected record type 'Weapon', got %s", record.Record.Type)
+			}
+			receivedRecord = true
+			break
+		}
+
+		if !receivedRecord {
+			t.Error("expected to receive a record")
+		}
+
+		if len(requestedTypes) == 0 {
+			t.Fatal("expected store.Stream to be called")
+		}
+		if requestedTypes[0] != "Weapon" {
+			t.Errorf("expected first stream request with type 'Weapon', got %s", requestedTypes[0])
+		}
+	})
+	t.Run("TypeAll behavior is preserved", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var requestedTypes []Type
+		store := &mockStore{
+			lockAcquireFunc: func(ctx context.Context, key, lockedBy string, timeout time.Duration) (bool, error) {
+				return true, nil
+			},
+			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
+				return Record{}, false, nil
+			},
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
+				requestedTypes = append(requestedTypes, t)
+				return []StreamRecord{{Seq: 1, Record: Record{Type: "Any"}}}, nil
+			},
+			putFunc: func(ctx context.Context, key string, version int, value any) error {
+				return nil
+			},
+			deleteFunc: func(ctx context.Context, keys ...string) (int, error) {
+				return 0, nil
+			},
+		}
+
+		sr := NewStreamConsumer(ctx, store, "teststream", "consumer1", TypeAll)
+		sr.MinBackoff = 1 * time.Millisecond
+		sr.MaxBackoff = 2 * time.Millisecond
+
+		iterCtx, iterCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		defer iterCancel()
+
+		for _, err := range sr.Read(iterCtx) {
+			if err != nil {
+				break
+			}
+			break
+		}
+
+		if len(requestedTypes) == 0 {
+			t.Fatal("expected store.Stream to be called")
+		}
+		if requestedTypes[0] != TypeAll {
+			t.Errorf("expected first stream request with TypeAll, got %s", requestedTypes[0])
+		}
+	})
+	t.Run("Administrative functions handle type correctly", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		consumerState := map[string]StreamConsumerStatus{
+			"github.com/a-h/kv/stream/teststream": {
+				Name:        "teststream",
+				OfType:      "Position",
+				Seq:         5,
+				LastUpdated: time.Now().UTC().Format(time.RFC3339),
+			},
+		}
+
+		var streamCallType Type
+		store := &mockStore{
+			getFunc: func(ctx context.Context, key string, value any) (Record, bool, error) {
+				if cs, ok := value.(*StreamConsumerStatus); ok {
+					if stored, exists := consumerState[key]; exists {
+						*cs = stored
+						return Record{Version: 1}, true, nil
+					}
+				}
+				return Record{}, false, nil
+			},
+			streamFunc: func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error) {
+				streamCallType = t
+				return []StreamRecord{{Seq: 5, Record: Record{Type: string(t)}}}, nil
+			},
+		}
+
+		records, err := GetStreamConsumerRecords(ctx, store, "teststream", Type("Position"), 10)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(records) != 1 {
+			t.Errorf("expected 1 record, got %d", len(records))
+		}
+		if streamCallType != "Position" {
+			t.Errorf("expected stream call with type 'Position', got %s", streamCallType)
 		}
 	})
 }

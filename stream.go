@@ -19,12 +19,13 @@ func streamKeyFromName(name string) string {
 	return fmt.Sprintf("github.com/a-h/kv/stream/%s", name)
 }
 
-func NewStreamConsumer(ctx context.Context, store Store, streamName, consumerName string) *StreamConsumer {
+func NewStreamConsumer(ctx context.Context, store Store, streamName, consumerName string, ofType Type) *StreamConsumer {
 	return &StreamConsumer{
 		Locker:              NewLocker(store, streamName, consumerName, 5*time.Minute),
 		Store:               store,
 		StreamName:          streamName,
 		ConsumerName:        consumerName,
+		OfType:              ofType,
 		Seq:                 -1,
 		Limit:               10,
 		MinBackoff:          100 * time.Millisecond,
@@ -39,6 +40,8 @@ type StreamConsumer struct {
 	Store        Store
 	StreamName   string
 	ConsumerName string
+	// OfType is the type filter for stream records.
+	OfType Type
 	// Seq is the current read position.
 	Seq int
 	// LastSeq is the last maximum sequence number seen.
@@ -61,6 +64,7 @@ func (s *StreamConsumer) Commit(ctx context.Context) error {
 	}
 	cs := StreamConsumerStatus{
 		Name:        s.StreamName,
+		OfType:      s.OfType,
 		Seq:         s.LastSeq + 1,
 		LastUpdated: time.Now().UTC().Format(time.RFC3339),
 	}
@@ -151,7 +155,7 @@ func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error
 					s.Seq = cs.Seq
 				}
 			}
-			records, err := s.Store.Stream(ctx, TypeAll, s.Seq, s.Limit)
+			records, err := s.Store.Stream(ctx, s.OfType, s.Seq, s.Limit)
 			if err != nil {
 				if !yield(StreamRecord{}, fmt.Errorf("stream: failed to get records: %w", err)) {
 					return
@@ -249,6 +253,7 @@ func (l *Locker) Unlock(ctx context.Context) (err error) {
 
 type StreamConsumerStatus struct {
 	Name        string `json:"name"`
+	OfType      Type   `json:"ofType"`
 	Seq         int    `json:"seq"`
 	LastUpdated string `json:"lastUpdated"`
 }
@@ -291,7 +296,7 @@ func CommitStreamConsumer(ctx context.Context, store Store, streamName string, s
 }
 
 // GetStreamConsumerRecords gets records for a consumer (for administrative use).
-func GetStreamConsumerRecords(ctx context.Context, store Store, streamName string, limit int) ([]StreamRecord, error) {
+func GetStreamConsumerRecords(ctx context.Context, store Store, streamName string, t Type, limit int) ([]StreamRecord, error) {
 	var cs StreamConsumerStatus
 	_, ok, err := store.Get(ctx, streamKeyFromName(streamName), &cs)
 	if err != nil {
@@ -306,7 +311,7 @@ func GetStreamConsumerRecords(ctx context.Context, store Store, streamName strin
 	if limit <= 0 {
 		limit = 10
 	}
-	records, err := store.Stream(ctx, TypeAll, cs.Seq, limit)
+	records, err := store.Stream(ctx, t, cs.Seq, limit)
 	if err != nil {
 		return nil, fmt.Errorf("stream: failed to get records: %w", err)
 	}

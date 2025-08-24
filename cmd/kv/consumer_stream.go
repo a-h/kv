@@ -14,6 +14,7 @@ import (
 type ConsumerStreamCommand struct {
 	StreamName   string `arg:"" help:"The stream name." required:"true"`
 	ConsumerName string `arg:"" help:"The consumer name." required:"true"`
+	OfType       string `help:"The type of records to fetch." default:"all" enum:"all,put,delete"`
 	CommitMode   string `help:"Commit mode: 'none' (no commits), 'batch' (commit after each batch), 'all' (commit after each record)." enum:"none,batch,all" default:"none"`
 	Limit        int    `help:"The maximum number of records to fetch per batch." default:"10"`
 }
@@ -27,7 +28,7 @@ func (c *ConsumerStreamCommand) Run(ctx context.Context, g GlobalFlags) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	consumer := kv.NewStreamConsumer(ctx, store, c.StreamName, c.ConsumerName)
+	consumer := kv.NewStreamConsumer(ctx, store, c.StreamName, c.ConsumerName, kv.Type(c.OfType))
 	consumer.Limit = c.Limit
 	consumer.CommitMode = kv.CommitMode(c.CommitMode)
 

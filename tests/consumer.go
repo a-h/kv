@@ -61,7 +61,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 		}
 
 		t.Run("Calling get multiple times without committing maintains position", func(t *testing.T) {
-			reader := kv.NewStreamConsumer(ctx, store, "consumer-1", "test-consumer-1")
+			reader := kv.NewStreamConsumer(ctx, store, "consumer-1", "test-consumer-1", kv.TypeAll)
 			reader.Limit = 1
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
@@ -98,7 +98,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can iterate through records", func(t *testing.T) {
-			reader := kv.NewStreamConsumer(ctx, store, "consumer-2", "test-consumer-2")
+			reader := kv.NewStreamConsumer(ctx, store, "consumer-2", "test-consumer-2", kv.TypeAll)
 			reader.Limit = 1
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
@@ -144,7 +144,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 		})
 		t.Run("Can reload consumer state", func(t *testing.T) {
-			reader := kv.NewStreamConsumer(ctx, store, "consumer-3", "test-consumer-3")
+			reader := kv.NewStreamConsumer(ctx, store, "consumer-3", "test-consumer-3", kv.TypeAll)
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
 			defer func() {
@@ -173,7 +173,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			}
 			cancel()
 
-			reader = kv.NewStreamConsumer(ctx, store, "consumer-3", "test-consumer-3")
+			reader = kv.NewStreamConsumer(ctx, store, "consumer-3", "test-consumer-3", kv.TypeAll)
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
 
