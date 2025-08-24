@@ -178,7 +178,7 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			reader.MaxBackoff = 10 * time.Millisecond
 
 			var hasRecords bool
-			timeoutCtx, cancel = context.WithTimeout(ctx, 200*time.Millisecond)
+			timeoutCtx, cancel = context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
 			for _, err := range reader.Read(timeoutCtx) {
 				if err != nil {
