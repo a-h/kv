@@ -100,26 +100,12 @@ func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error
 		var lockAcquired bool
 		defer func() {
 			if lockAcquired {
-				_ = s.Locker.Unlock(ctx)
+				// Use a fresh context for unlocking, since the original context may be canceled.
+				unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = s.Locker.Unlock(unlockCtx)
 			}
 		}()
-
-		if s.Seq < 0 {
-			var cs StreamConsumerStatus
-			r, ok, err := s.Store.Get(ctx, streamKeyFromName(s.StreamName), &cs)
-			if err != nil {
-				if !yield(StreamRecord{}, fmt.Errorf("stream: failed to get consumer record: %w", err)) {
-					return
-				}
-				return
-			}
-			s.Version = 0
-			s.Seq = 0
-			if ok {
-				s.Version = r.Version
-				s.Seq = cs.Seq
-			}
-		}
 
 		lockBackoff := s.MinBackoff
 		emptyBackoff := s.MinBackoff
@@ -148,11 +134,22 @@ func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error
 			lockAcquired = true
 			lockBackoff = s.MinBackoff
 
+			// Load consumer state after acquiring lock to get the latest version
 			if s.Seq < 0 {
-				if !yield(StreamRecord{}, fmt.Errorf("stream: offset is not set")) {
+				var cs StreamConsumerStatus
+				r, ok, err := s.Store.Get(ctx, streamKeyFromName(s.StreamName), &cs)
+				if err != nil {
+					if !yield(StreamRecord{}, fmt.Errorf("stream: failed to get consumer record: %w", err)) {
+						return
+					}
 					return
 				}
-				return
+				s.Version = 0
+				s.Seq = 0
+				if ok {
+					s.Version = r.Version
+					s.Seq = cs.Seq
+				}
 			}
 			records, err := s.Store.Stream(ctx, TypeAll, s.Seq, s.Limit)
 			if err != nil {
