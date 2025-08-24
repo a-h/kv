@@ -9,9 +9,9 @@ import (
 )
 
 type ConsumerGetCommand struct {
-	Name  string `arg:"" help:"The consumer name." required:"true"`
-	Type  string `help:"The type of records to fetch." default:"all"`
-	Limit int    `help:"The maximum number of records to fetch." default:"10"`
+	Name   string `arg:"" help:"The consumer name." required:"true"`
+	OfType string `help:"The type of records to fetch." default:"all"`
+	Limit  int    `help:"The maximum number of records to fetch." default:"10"`
 }
 
 func (c *ConsumerGetCommand) Run(ctx context.Context, g GlobalFlags) error {
@@ -19,7 +19,7 @@ func (c *ConsumerGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if err != nil {
 		return err
 	}
-	records, err := kv.GetStreamConsumerRecords(ctx, store, c.Name, kv.Type(c.Type), c.Limit)
+	records, err := kv.GetStreamConsumerRecords(ctx, store, c.Name, kv.Type(c.OfType), c.Limit)
 	if err != nil {
 		return err
 	}
