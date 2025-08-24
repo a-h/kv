@@ -25,20 +25,19 @@ func (se *SqliteExecutor) Exec(ctx context.Context, sql string) error {
 	return sqlitex.ExecScript(conn, sql)
 }
 
-func (se *SqliteExecutor) QueryIntScalar(ctx context.Context, sql string) (int, error) {
+func (se *SqliteExecutor) QueryIntScalar(ctx context.Context, sql string) (v int, err error) {
 	conn, err := se.pool.Take(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer se.pool.Put(conn)
 
-	var version int
 	opts := &sqlitex.ExecOptions{
 		ResultFunc: func(stmt *sqlite.Stmt) error {
-			version = int(stmt.ColumnInt64(0))
+			v = int(stmt.ColumnInt64(0))
 			return nil
 		},
 	}
 	err = sqlitex.Execute(conn, sql, opts)
-	return version, err
+	return v, err
 }
