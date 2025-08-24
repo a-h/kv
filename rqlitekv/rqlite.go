@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	_ "embed"
-
 	"github.com/a-h/kv"
 	rqlitehttp "github.com/rqlite/rqlite-go-http"
 )
@@ -36,23 +34,14 @@ func (rq *Rqlite) SetNow(now func() time.Time) {
 	rq.Now = now
 }
 
-//go:embed init.sql
-var initSQL string
-
 func (rq *Rqlite) Init(ctx context.Context) error {
-	stmts := rqlitehttp.SQLStatements{
-		{
-			SQL: initSQL,
-		},
+	executor := &RqliteExecutor{
+		client:          rq.Client,
+		timeout:         rq.Timeout,
+		readConsistency: rq.ReadConsistency,
 	}
-	opts := &rqlitehttp.ExecuteOptions{
-		Transaction: true,
-		Wait:        true,
-	}
-	if _, err := rq.Client.Execute(ctx, stmts, opts); err != nil {
-		return fmt.Errorf("init: %w", err)
-	}
-	return nil
+	runner := kv.NewMigrationRunner(executor, migrationsFS)
+	return runner.Migrate(ctx)
 }
 
 func (rq *Rqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {

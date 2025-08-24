@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	_ "embed"
-
 	"github.com/a-h/kv"
 	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
@@ -35,16 +33,8 @@ func (s *Sqlite) SetNow(now func() time.Time) {
 	s.Now = now
 }
 
-//go:embed init.sql
-var initSQL string
-
-func (s *Sqlite) Init(ctx context.Context) (err error) {
-	conn, err := s.Pool.Take(ctx)
-	if err != nil {
-		return err
-	}
-	defer s.Pool.Put(conn)
-	return sqlitex.ExecScript(conn, initSQL)
+func (s *Sqlite) Init(ctx context.Context) error {
+	return kv.NewMigrationRunner(&SqliteExecutor{pool: s.Pool}, migrationsFS).Migrate(ctx)
 }
 
 func (s *Sqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {

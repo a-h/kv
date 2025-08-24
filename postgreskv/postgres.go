@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	_ "embed"
-
 	"github.com/a-h/kv"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,27 +38,8 @@ func (p *Postgres) SetNow(now func() time.Time) {
 	p.Now = now
 }
 
-//go:embed init.sql
-var initSQL string
-
-func (p *Postgres) Init(ctx context.Context) (err error) {
-	tx, err := p.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("init: begin: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback(ctx)
-		} else {
-			err = tx.Commit(ctx)
-		}
-	}()
-
-	if _, err = tx.Exec(ctx, initSQL); err != nil {
-		return fmt.Errorf("init: exec: %w", err)
-	}
-
-	return err
+func (p *Postgres) Init(ctx context.Context) error {
+	return kv.NewMigrationRunner(&PostgresExecutor{pool: p.Pool}, migrationsFS).Migrate(ctx)
 }
 
 func (p *Postgres) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
