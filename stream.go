@@ -3,93 +3,101 @@ package kv
 import (
 	"context"
 	"fmt"
-	"iter"
 	"time"
 )
 
-type CommitMode string
-
-const (
-	CommitModeNone  CommitMode = "none"
-	CommitModeBatch CommitMode = "batch"
-	CommitModeAll   CommitMode = "all"
-)
-
+// streamKeyFromName generates a unique key for stream consumer state.
 func streamKeyFromName(name string) string {
 	return fmt.Sprintf("github.com/a-h/kv/stream/%s", name)
 }
 
+// NewStreamConsumer creates a new stream consumer for reading records from a KV store stream.
+// The consumer maintains position state and supports exclusive access via locking.
 func NewStreamConsumer(ctx context.Context, store Store, streamName, consumerName string, ofType Type) *StreamConsumer {
 	return &StreamConsumer{
-		Locker:              NewLocker(store, streamName, consumerName, 5*time.Minute),
-		Store:               store,
-		StreamName:          streamName,
-		ConsumerName:        consumerName,
-		OfType:              ofType,
-		Seq:                 -1,
-		Limit:               10,
-		MinBackoff:          100 * time.Millisecond,
-		MaxBackoff:          5 * time.Second,
-		LockExtendThreshold: 10 * time.Second,
-		CommitMode:          CommitModeBatch,
+		Locker:       NewLocker(store, streamName, consumerName, 5*time.Minute),
+		Store:        store,
+		StreamName:   streamName,
+		ConsumerName: consumerName,
+		OfType:       ofType,
+		Seq:          -1,
+		MinBackoff:   100 * time.Millisecond,
+		MaxBackoff:   5 * time.Second,
 	}
 }
 
+// StreamConsumer provides safe, exclusive access to a stream of records from a KV store.
+// It maintains position state and prevents multiple consumers from processing the same records.
 type StreamConsumer struct {
 	Locker       *Locker
 	Store        Store
 	StreamName   string
 	ConsumerName string
-	// OfType is the type filter for stream records.
-	OfType Type
-	// Seq is the current read position.
-	Seq int
-	// LastSeq is the last maximum sequence number seen.
-	LastSeq int
-	// Version for optimistic concurrency control.
-	Version int
-	// Limit is the maximum number of records to return in a single batch.
-	Limit               int
-	MinBackoff          time.Duration
-	MaxBackoff          time.Duration
-	LockExtendThreshold time.Duration
-	// CommitMode controls when commits happen: "none", "batch", "all"
-	CommitMode CommitMode
+	OfType       Type
+	Seq          int
+	Version      int
+	MinBackoff   time.Duration
+	MaxBackoff   time.Duration
 }
 
-// Commit acknowledges that the records returned by Read have been processed.
-func (s *StreamConsumer) Commit(ctx context.Context) error {
-	if s.LastSeq < 0 {
-		return fmt.Errorf("stream: LastSeq is not set, call Get before Commit or set LastSeq explicitly")
+// Commit acknowledges that all records in the batch have been successfully processed.
+// This updates the consumer's position in the stream so these records won't be redelivered
+// but keeps the lock held for future Get() calls.
+// Call this only after successfully processing all records from the batch returned by Get().
+func (s *StreamConsumer) Commit(ctx context.Context, batch []StreamRecord) error {
+	if len(batch) == 0 {
+		return nil
 	}
+
+	maxSeq := batch[0].Seq
+	for _, record := range batch {
+		if record.Seq > maxSeq {
+			maxSeq = record.Seq
+		}
+	}
+
+	return s.CommitUpTo(ctx, maxSeq)
+}
+
+// CommitUpTo acknowledges that all records up to and including the specified sequence have been processed.
+// This updates the consumer's position but keeps the lock held for future Get() calls.
+// This is useful when you want to commit only a subset of records from a batch.
+func (s *StreamConsumer) CommitUpTo(ctx context.Context, seq int) error {
 	cs := StreamConsumerStatus{
 		Name:        s.StreamName,
 		OfType:      s.OfType,
-		Seq:         s.LastSeq + 1,
+		Seq:         seq + 1,
 		LastUpdated: time.Now().UTC().Format(time.RFC3339),
 	}
 	err := s.Store.Put(ctx, streamKeyFromName(s.StreamName), s.Version, cs)
 	if err != nil {
-		return fmt.Errorf("stream: failed to commit offset %d: %w", s.Seq, err)
+		return fmt.Errorf("stream: failed to commit offset %d: %w", seq, err)
 	}
 	s.Version++
-	s.Seq = s.LastSeq + 1
+	s.Seq = seq + 1
+
 	return nil
 }
 
-// CommitUpTo acknowledges that all records up to and including the specified sequence have been processed.
-func (s *StreamConsumer) CommitUpTo(ctx context.Context, seq int) error {
-	s.LastSeq = seq
-	return s.Commit(ctx)
+// Unlock explicitly releases the lock held by this consumer.
+// This is useful when you're done processing and want to release the lock immediately
+// rather than waiting for it to expire.
+func (s *StreamConsumer) Unlock(ctx context.Context) (err error) {
+	if err = s.Locker.Unlock(ctx); err != nil {
+		return fmt.Errorf("stream: failed to unlock consumer: %w", err)
+	}
+	s.Locker.LockedUntil = time.Time{}
+	return nil
 }
 
 // Delete removes the consumer record from the store.
+// This resets the consumer's position and allows it to start from the beginning.
 func (s *StreamConsumer) Delete(ctx context.Context) error {
 	_, err := s.Store.Delete(ctx, streamKeyFromName(s.StreamName))
 	return err
 }
 
-// Status returns the current status of the consumer.
+// Status returns the current status of the consumer including its position in the stream.
 func (s *StreamConsumer) Status(ctx context.Context) (StreamConsumerStatus, bool, error) {
 	var cs StreamConsumerStatus
 	_, ok, err := s.Store.Get(ctx, streamKeyFromName(s.StreamName), &cs)
@@ -99,123 +107,56 @@ func (s *StreamConsumer) Status(ctx context.Context) (StreamConsumerStatus, bool
 	return cs, ok, nil
 }
 
-func (s *StreamConsumer) Read(ctx context.Context) iter.Seq2[StreamRecord, error] {
-	return func(yield func(StreamRecord, error) bool) {
-		var lockAcquired bool
-		defer func() {
-			if lockAcquired {
-				// Use a fresh context for unlocking, since the original context may be canceled.
-				unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = s.Locker.Unlock(unlockCtx)
-			}
-		}()
+// Get attempts to acquire/extend a lock and return a batch of records.
+// The lock is acquired if we don't have one, or extended if the remaining time is less than lockPeriod.
+// If successful, returns records and the lock is held until explicitly released with Unlock().
+// If unsuccessful, returns an empty slice and a waitFor duration suggesting how long to wait before retrying.
+// The caller is responsible for implementing retry logic and waiting.
+// Call Commit() to acknowledge processing, or Unlock() to release the lock when done.
+func (s *StreamConsumer) Get(ctx context.Context, lockPeriod time.Duration, batchSize int) (records []StreamRecord, waitFor time.Duration, err error) {
+	now := time.Now().UTC()
+	timeRemaining := s.Locker.LockedUntil.Sub(now)
 
-		lockBackoff := s.MinBackoff
-		emptyBackoff := s.MinBackoff
-		for {
-			if err := ctx.Err(); err != nil {
-				if !yield(StreamRecord{}, err) {
-					return
-				}
-				return
-			}
-
-			locked, err := s.Locker.Lock(ctx)
-			if err != nil {
-				if !yield(StreamRecord{}, err) {
-					return
-				}
-			}
-			if !locked {
-				time.Sleep(lockBackoff)
-				lockBackoff *= 2
-				if lockBackoff > s.MaxBackoff {
-					lockBackoff = s.MaxBackoff
-				}
-				continue
-			}
-			lockAcquired = true
-			lockBackoff = s.MinBackoff
-
-			// Load consumer state after acquiring lock to get the latest version
-			if s.Seq < 0 {
-				var cs StreamConsumerStatus
-				r, ok, err := s.Store.Get(ctx, streamKeyFromName(s.StreamName), &cs)
-				if err != nil {
-					if !yield(StreamRecord{}, fmt.Errorf("stream: failed to get consumer record: %w", err)) {
-						return
-					}
-					return
-				}
-				s.Version = 0
-				s.Seq = 0
-				if ok {
-					s.Version = r.Version
-					s.Seq = cs.Seq
-				}
-			}
-			records, err := s.Store.Stream(ctx, s.OfType, s.Seq, s.Limit)
-			if err != nil {
-				if !yield(StreamRecord{}, fmt.Errorf("stream: failed to get records: %w", err)) {
-					return
-				}
-			}
-			if len(records) == 0 {
-				time.Sleep(emptyBackoff)
-				emptyBackoff *= 2
-				if emptyBackoff > s.MaxBackoff {
-					emptyBackoff = s.MaxBackoff
-				}
-				continue
-			}
-			emptyBackoff = s.MinBackoff
-			for _, r := range records {
-				timeLeft := time.Until(s.Locker.LockedUntil)
-				if timeLeft < s.LockExtendThreshold {
-					acquired, err := s.Locker.Lock(ctx)
-					if err != nil {
-						if !yield(StreamRecord{}, err) {
-							return
-						}
-						return
-					}
-					if !acquired {
-						if !yield(StreamRecord{}, fmt.Errorf("stream: failed to extend lock")) {
-							return
-						}
-						return
-					}
-				}
-				if !yield(r, nil) {
-					return
-				}
-				s.LastSeq = r.Seq
-				if s.CommitMode == CommitModeAll {
-					if err := s.Commit(ctx); err != nil {
-						if !yield(StreamRecord{}, err) {
-							return
-						}
-						return
-					}
-				}
-			}
-
-			if s.CommitMode == CommitModeBatch {
-				if err := s.Commit(ctx); err != nil {
-					if !yield(StreamRecord{}, err) {
-						return
-					}
-					return
-				}
-			}
-			if s.CommitMode == CommitModeNone {
-				s.Seq = s.LastSeq + 1
-			}
+	if timeRemaining < lockPeriod {
+		s.Locker.MsgTimeout = lockPeriod
+		locked, err := s.Locker.Lock(ctx)
+		if err != nil {
+			return nil, 0, fmt.Errorf("stream: failed to acquire lock: %w", err)
+		}
+		if !locked {
+			return nil, s.MinBackoff, nil
 		}
 	}
+
+	if s.Seq < 0 {
+		var cs StreamConsumerStatus
+		r, ok, err := s.Store.Get(ctx, streamKeyFromName(s.StreamName), &cs)
+		if err != nil {
+			_ = s.Unlock(ctx)
+			return nil, 0, fmt.Errorf("stream: failed to get consumer record: %w", err)
+		}
+		s.Version = 0
+		s.Seq = 0
+		if ok {
+			s.Version = r.Version
+			s.Seq = cs.Seq
+		}
+	}
+
+	records, err = s.Store.Stream(ctx, s.OfType, s.Seq, batchSize)
+	if err != nil {
+		_ = s.Unlock(ctx)
+		return nil, 0, fmt.Errorf("stream: failed to get records: %w", err)
+	}
+
+	if len(records) == 0 {
+		return nil, s.MinBackoff, nil
+	}
+
+	return records, 0, nil
 }
 
+// NewLocker creates a new locker for stream consumer coordination.
 func NewLocker(store Store, streamName, lockedBy string, msgTimeout time.Duration) *Locker {
 	return &Locker{
 		Store:      store,
@@ -225,6 +166,7 @@ func NewLocker(store Store, streamName, lockedBy string, msgTimeout time.Duratio
 	}
 }
 
+// Locker provides distributed locking for stream consumers to ensure exclusive access.
 type Locker struct {
 	Store       Store
 	StreamName  string
@@ -233,6 +175,8 @@ type Locker struct {
 	LockedUntil time.Time
 }
 
+// Lock attempts to acquire an exclusive lock for this consumer.
+// Returns true if the lock was acquired, false if another consumer holds it.
 func (l *Locker) Lock(ctx context.Context) (acquired bool, err error) {
 	lockedUntil := time.Now().UTC().Add(l.MsgTimeout)
 	acquired, err = l.Store.LockAcquire(ctx, streamKeyFromName(l.StreamName), l.LockedBy, l.MsgTimeout)
@@ -247,6 +191,7 @@ func (l *Locker) Lock(ctx context.Context) (acquired bool, err error) {
 	return true, nil
 }
 
+// Unlock releases the lock held by this consumer.
 func (l *Locker) Unlock(ctx context.Context) (err error) {
 	return l.Store.LockRelease(ctx, streamKeyFromName(l.StreamName), l.LockedBy)
 }

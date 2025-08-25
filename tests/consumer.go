@@ -62,7 +62,6 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 
 		t.Run("Calling get multiple times without committing maintains position", func(t *testing.T) {
 			reader := kv.NewStreamConsumer(ctx, store, "consumer-1", "test-consumer-1", kv.TypeAll)
-			reader.Limit = 1
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
 			defer func() {
@@ -74,15 +73,25 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			for i := range 3 {
 				var count int
 				timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
-				for record, err := range reader.Read(timeoutCtx) {
-					if err != nil {
-						if errors.Is(err, context.DeadlineExceeded) && count == 0 {
-							t.Errorf("iteration %d: timed out waiting for data", i)
-						} else {
-							t.Errorf("iteration %d: unexpected error getting data: %v", i, err)
-						}
-						break
+
+				records, waitFor, err := reader.Get(timeoutCtx, 5*time.Minute, 10)
+				if err != nil {
+					if errors.Is(err, context.DeadlineExceeded) && count == 0 {
+						t.Errorf("iteration %d: timed out waiting for data", i)
+					} else {
+						t.Errorf("iteration %d: unexpected error getting data: %v", i, err)
 					}
+					cancel()
+					continue
+				}
+
+				if len(records) == 0 {
+					cancel()
+					time.Sleep(waitFor)
+					continue
+				}
+
+				for _, record := range records {
 					count++
 					if record.Record.Key != "consumer/frank" {
 						t.Fatalf("iteration %d: expected key 'consumer/frank', got %s", i, record.Record.Key)
@@ -92,14 +101,24 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 					}
 				}
 				cancel()
+
+				// Intentionally NOT committing to test that position is maintained.
+
 				if count != 1 {
 					t.Fatalf("iteration %d: expected 1 record, got %d", i, count)
 				}
 			}
+
+			// Commit to clean up.
+			timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+			defer cancel()
+			records, _, err := reader.Get(timeoutCtx, 5*time.Minute, 10)
+			if err == nil && len(records) > 0 {
+				reader.Commit(timeoutCtx, records)
+			}
 		})
 		t.Run("Can iterate through records", func(t *testing.T) {
 			reader := kv.NewStreamConsumer(ctx, store, "consumer-2", "test-consumer-2", kv.TypeAll)
-			reader.Limit = 1
 			reader.MinBackoff = 1 * time.Millisecond
 			reader.MaxBackoff = 10 * time.Millisecond
 			defer func() {
@@ -112,7 +131,8 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			defer cancel()
 
 			var expectedIndex int
-			for record, err := range reader.Read(timeoutCtx) {
+			for expectedIndex < len(expected) {
+				records, waitFor, err := reader.Get(timeoutCtx, 5*time.Minute, 1)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) && expectedIndex >= len(expected) {
 						break
@@ -120,23 +140,36 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 					t.Errorf("iteration %d: unexpected error getting data: %v", expectedIndex, err)
 					break
 				}
-				if expectedIndex >= len(expected) {
-					break
+
+				if len(records) == 0 {
+					time.Sleep(waitFor)
+					continue
 				}
 
-				person, err := kv.ValueOf[Person](record.Record)
-				if err != nil {
-					t.Fatalf("iteration %d: unexpected error getting value: %v", expectedIndex, err)
+				if len(records) == 0 {
+					continue
 				}
 
-				if person.Name != expected[expectedIndex].Name {
-					t.Errorf("iteration %d: expected name '%s', got '%s'", expectedIndex, expected[expectedIndex].Name, person.Name)
-				}
+				for _, record := range records {
+					if expectedIndex >= len(expected) {
+						break
+					}
 
-				if err = reader.CommitUpTo(ctx, record.Seq); err != nil {
-					t.Fatalf("iteration %d: unexpected error committing data: %v", expectedIndex, err)
+					person, err := kv.ValueOf[Person](record.Record)
+					if err != nil {
+						t.Fatalf("iteration %d: unexpected error getting value: %v", expectedIndex, err)
+					}
+
+					if person.Name != expected[expectedIndex].Name {
+						t.Errorf("iteration %d: expected name '%s', got '%s'", expectedIndex, expected[expectedIndex].Name, person.Name)
+					}
+
+					if err = reader.CommitUpTo(ctx, record.Seq); err != nil {
+						t.Fatalf("iteration %d: unexpected error committing data: %v", expectedIndex, err)
+					}
+
+					expectedIndex++
 				}
-				expectedIndex++
 			}
 
 			if expectedIndex != len(expected) {
@@ -155,7 +188,8 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 
 			var recordCount int
 			timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			for record, err := range reader.Read(timeoutCtx) {
+			for recordCount < len(expected) {
+				records, waitFor, err := reader.Get(timeoutCtx, 5*time.Minute, 10)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
 						t.Fatalf("timed out reading records after %d records", recordCount)
@@ -163,12 +197,24 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 					t.Fatalf("unexpected error getting data: %v", err)
 					break
 				}
-				recordCount++
-				if recordCount >= len(expected) {
-					if err = reader.CommitUpTo(ctx, record.Seq); err != nil {
-						t.Fatalf("unexpected error committing data: %v", err)
+
+				if len(records) == 0 {
+					time.Sleep(waitFor)
+					continue
+				}
+
+				if len(records) == 0 {
+					continue
+				}
+
+				for _, record := range records {
+					recordCount++
+					if recordCount >= len(expected) {
+						if err = reader.CommitUpTo(ctx, record.Seq); err != nil {
+							t.Fatalf("unexpected error committing data: %v", err)
+						}
+						break
 					}
-					break
 				}
 			}
 			cancel()
@@ -180,17 +226,16 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 			var hasRecords bool
 			timeoutCtx, cancel = context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
-			for _, err := range reader.Read(timeoutCtx) {
-				if err != nil {
-					if errors.Is(err, context.DeadlineExceeded) {
-						break
-					}
+
+			records, _, err := reader.Get(timeoutCtx, 5*time.Minute, 10)
+			if err != nil {
+				if !errors.Is(err, context.DeadlineExceeded) {
 					t.Fatalf("unexpected error getting data after reload: %v", err)
-					break
 				}
+			} else if len(records) > 0 {
 				hasRecords = true
-				break
 			}
+
 			if hasRecords {
 				t.Error("expected no records after consuming all and reloading")
 			}
