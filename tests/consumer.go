@@ -108,14 +108,6 @@ func newConsumerTest(ctx context.Context, store kv.Store) func(t *testing.T) {
 					t.Fatalf("iteration %d: expected 1 record, got %d", i, count)
 				}
 			}
-
-			// Commit to clean up.
-			timeoutCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
-			defer cancel()
-			records, _, err := reader.Get(timeoutCtx, 5*time.Minute, 10)
-			if err == nil && len(records) > 0 {
-				reader.Commit(timeoutCtx, records)
-			}
 		})
 		t.Run("Can iterate through records", func(t *testing.T) {
 			reader := kv.NewStreamConsumer(ctx, store, "consumer-2", "test-consumer-2", kv.TypeAll)
