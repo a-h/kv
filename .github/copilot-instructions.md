@@ -8,7 +8,11 @@ Write idiomatic Go code, e.g.:
 
 ### Comments
 
-- **Remove obvious comments**: Don't include comments that describe what the code obviously does. Comments should explain why, not what.
+- Omit obvious comments.
+- Write complete sentences, terminating in a full stop.
+- Write comments on the line above statements, instead of on the same line.
+- Omit comments that describe what the code does.
+- Provide comments for public APIs.
 - **Use proper comment punctuation**: Go comments should be complete sentences with proper punctuation (periods at the end).
 - **No trailing comments**: Comments should be on their own lines, not trailing after statements.
 - **Don't add pointless comments: Code should describe itself.
