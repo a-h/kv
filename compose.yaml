@@ -1,0 +1,74 @@
+services:
+  # RQLite - Distributed SQLite
+  rqlite:
+    image: rqlite/rqlite:latest
+    container_name: kv-rqlite
+    ports:
+      - "4001:4001"  # HTTP API
+      - "4002:4002"  # Raft
+      - "4003:4003"  # Cluster communication
+    volumes:
+      - "./auth.json:/mnt/rqlite/auth.json:ro"
+      - "./.rqlite:/mnt/data"
+    command: |
+      rqlited
+      -http-addr 0.0.0.0:4001
+      -http-adv-addr kv-rqlite:4001
+      -raft-addr 0.0.0.0:4002
+      -raft-adv-addr kv-rqlite:4002
+      -auth /mnt/rqlite/auth.json
+      /mnt/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    container_name: kv-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: testdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # NATS with JetStream
+  nats:
+    image: nats:2.10-alpine
+    container_name: kv-nats
+    ports:
+      - "4222:4222"  # Client connections
+      - "8222:8222"  # HTTP management
+    command: |
+      nats-server
+      --name kv-nats
+      --jetstream
+      --store_dir /data
+      --http_port 8222
+      --port 4222
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/varz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    driver: local
+  nats_data:
+    driver: local

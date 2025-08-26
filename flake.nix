@@ -110,6 +110,7 @@
         # Database tools.
         pkgs.rqlite # Distributed sqlite.
         pkgs.pgcli # PostgreSQL CLI. Use `pgcli -h localhost -u postgres` and password `secret` as per the README.md file.
+        pkgs.natscli # NATS CLI for testing and monitoring NATS server.
       ];
 
       name = "kv";

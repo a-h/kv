@@ -61,11 +61,10 @@ func (mr *MigrationRunner) getMigrations() ([]Migration, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read migration file %s: %w", entry.Name(), err)
 		}
-
 		migrations = append(migrations, Migration{
 			Version: version,
 			Name:    name,
-			SQL:     string(sqlBytes),
+			SQL:     strings.TrimSpace(string(sqlBytes)),
 		})
 	}
 
@@ -82,10 +81,15 @@ func (mr *MigrationRunner) getCurrentVersion(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to read get_current_version.sql: %w", err)
 	}
-	versionQuery := string(versionQueryBytes)
-	version, err := mr.executor.QueryIntScalar(ctx, versionQuery)
+	version, err := mr.executor.QueryIntScalar(ctx, strings.TrimSpace(string(versionQueryBytes)))
 	if err != nil {
-		return 0, nil
+		// If the migration_version table doesn't exist yet, that's expected for a fresh database.
+		// Return 0 to indicate no migrations have been applied.
+		if strings.Contains(err.Error(), "no such table") || strings.Contains(err.Error(), "relation") && strings.Contains(err.Error(), "does not exist") {
+			return 0, nil
+		}
+		// For other errors (connection issues, syntax errors, etc.), propagate them.
+		return 0, fmt.Errorf("failed to query current migration version: %w", err)
 	}
 	return version, nil
 }

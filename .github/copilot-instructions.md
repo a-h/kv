@@ -1,6 +1,6 @@
-## Go guidelines
+## Instructions
 
-Write idiomatic Go code, e.g.:
+Comments MUST be complete sentences with proper punctuation.
 
 ### Control Flow
 
@@ -8,14 +8,13 @@ Write idiomatic Go code, e.g.:
 
 ### Comments
 
-- Omit obvious comments.
+- Only write comments for non-obvious code.
+- Write comments using proper punctuation.
 - Write complete sentences, terminating in a full stop.
 - Write comments on the line above statements, instead of on the same line.
 - Omit comments that describe what the code does.
 - Provide comments for public APIs.
-- **Use proper comment punctuation**: Go comments should be complete sentences with proper punctuation (periods at the end).
-- **No trailing comments**: Comments should be on their own lines, not trailing after statements.
-- **Don't add pointless comments: Code should describe itself.
+- Write comments on their own lines, not trailing after statements.
 
 ### Variable Declaration
 - **Use idiomatic zero value initialization**: Use `var count int` instead of `count := 0`, and `var found bool` instead of `found := false` when initializing to zero values.

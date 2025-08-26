@@ -3,3 +3,6 @@
 /data.db*
 /result
 /kv
+/natspusher/cmd/natspusher/natspusher
+/np
+/.rqlite

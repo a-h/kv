@@ -12,7 +12,9 @@ To connect to an rqlite database, use `--type rqlite --connection 'http://localh
 
 To connect to a sqlite database, use `--type sqlite --connection 'file:data.db?mode=rwc'`.
 
-To connect to a postgres database, use `--type postgres --connection 'postgres://postgres:secret@localhost:5432/postgres?sslmode=disable'`.
+To connect to a postgres database, use `--type postgres --connection 'postgres://postgres:secret@localhost:5432/testdb?sslmode=disable'`.
+
+Start the development services with `xc docker-run-services` to get RQLite, PostgreSQL, and NATS running locally.
 
 
 ```bash
@@ -317,10 +319,30 @@ gunzip -f /tmp/kv.tar.gz
 crane push /tmp/kv.tar ${CONTAINER_REGISTRY}/kv:v0.0.1
 ```
 
-### docker-run-rqlite
+### docker-services-run
+
+Interactive: true
+
+Start development services (RQLite, PostgreSQL, NATS with JetStream).
 
 ```bash
-docker run -v "$PWD/auth.json:/mnt/rqlite/auth.json" -v "$PWD/.rqlite:/mnt/data" -p 4001:4001 -p 4002:4002 -p 4003:4003 rqlite/rqlite:latest
+docker compose up
+```
+
+### docker-services-stop
+
+Stop development services.
+
+```bash
+docker compose down
+```
+
+### docker-services-logs
+
+View logs from development services.
+
+```bash
+docker compose logs -f
 ```
 
 ### rqlite-db-shell
@@ -331,12 +353,6 @@ interactive: true
 rqlite --user='admin:secret'
 ```
 
-### docker-run-postgres
-
-```bash
-docker run -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=testdb -p 5432:5432 postgres:latest
-```
-
 ### postgres-db-shell
 
 Env: PGPASSWORD=secret
@@ -344,4 +360,12 @@ interactive: true
 
 ```bash
 pgcli -h localhost -u postgres -d postgres
+```
+
+### nats-cli
+
+Connect to NATS server for testing and monitoring.
+
+```bash
+nats --server=nats://localhost:4222 server info
 ```
