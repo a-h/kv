@@ -46,11 +46,11 @@ func (c *TaskRunCommand) Run(ctx context.Context, g GlobalFlags) error {
 	// Register handlers - if task types are specified, only register those handlers.
 	// Otherwise, register all available example handlers.
 	availableHandlers := map[string]func(ctx context.Context, task kv.Task) error{
-		"echo": func(ctx context.Context, task kv.Task) error {
+		"echo": func(_ context.Context, task kv.Task) error {
 			fmt.Printf("Echo task executed: %s\n", string(task.Payload))
 			return nil
 		},
-		"log": func(ctx context.Context, task kv.Task) error {
+		"log": func(_ context.Context, task kv.Task) error {
 			var data map[string]any
 			if err := json.Unmarshal(task.Payload, &data); err != nil {
 				return err
@@ -58,7 +58,7 @@ func (c *TaskRunCommand) Run(ctx context.Context, g GlobalFlags) error {
 			fmt.Printf("Log task executed: %+v\n", data)
 			return nil
 		},
-		"process": func(ctx context.Context, task kv.Task) error {
+		"process": func(_ context.Context, task kv.Task) error {
 			fmt.Printf("Process task executed with payload: %s\n", string(task.Payload))
 			// Simulate some work.
 			time.Sleep(100 * time.Millisecond)

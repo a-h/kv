@@ -449,6 +449,8 @@ go test -coverprofile=coverage.out ./...
 
 ### lint
 
+interactive: true
+
 ```bash
 golangci-lint run
 ```
