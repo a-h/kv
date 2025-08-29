@@ -88,7 +88,7 @@ func personSliceIsEqual(a, b []Person) bool {
 	return true
 }
 
-func Run(t *testing.T, store kv.Store) {
+func Run(t *testing.T, store kv.Store, scheduler kv.Scheduler) {
 	ctx := context.Background()
 	if err := store.Init(ctx); err != nil {
 		t.Fatalf("unexpected error initializing store: %v", err)
@@ -99,6 +99,7 @@ func Run(t *testing.T, store kv.Store) {
 		t.Fatalf("unexpected error clearing data: %v", err)
 	}
 
+	// Store tests.
 	t.Run("Get", newGetTest(ctx, store))
 	t.Run("GetPrefix", newGetPrefixTest(ctx, store))
 	t.Run("GetRange", newGetRangeTest(ctx, store))
@@ -116,6 +117,9 @@ func Run(t *testing.T, store kv.Store) {
 	t.Run("Stream", newStreamTest(ctx, store))
 	t.Run("Consumer", newConsumerTest(ctx, store))
 	t.Run("Locks", newLockTest(ctx, store))
+
+	// Scheduler tests.
+	t.Run("Scheduler", newSchedulerTest(ctx, scheduler))
 
 	deleted, err := store.DeletePrefix(ctx, "*", 0, -1)
 	if err != nil {

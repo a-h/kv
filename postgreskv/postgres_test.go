@@ -17,6 +17,7 @@ func TestPostgres(t *testing.T) {
 	}
 	defer pool.Close()
 
-	store := New(pool)
-	tests.Run(t, store)
+	store := NewStore(pool)
+	scheduler := NewScheduler(pool)
+	tests.Run(t, store, scheduler)
 }

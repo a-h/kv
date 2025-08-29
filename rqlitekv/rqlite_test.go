@@ -16,6 +16,7 @@ func TestRqlite(t *testing.T) {
 	// Username and password configured in auth.json.
 	client.SetBasicAuth("admin", "secret")
 
-	store := New(client)
-	tests.Run(t, store)
+	store := NewStore(client)
+	scheduler := NewScheduler(client)
+	tests.Run(t, store, scheduler)
 }

@@ -33,7 +33,7 @@ func TestEntityComponentSystem(t *testing.T) {
 	}
 	defer pool.Close()
 
-	store := sqlitekv.New(pool)
+	store := sqlitekv.NewStore(pool)
 	if err := store.Init(ctx); err != nil {
 		t.Fatalf("failed to init store: %v", err)
 	}

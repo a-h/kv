@@ -22,7 +22,7 @@ func (c *BenchmarkGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 
 	fmt.Printf("Putting %d initial records...\n", c.X)
 
-	for i := 0; i < c.X; i++ {
+	for i := range c.X {
 		p := map[string]any{
 			"key":      fmt.Sprintf("kv-benchmark-get-key-%d", i),
 			"name":     fmt.Sprintf("Alice-%d", c.N),
@@ -47,14 +47,14 @@ func (c *BenchmarkGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < c.N; i++ {
+		for range c.N {
 			gets <- fmt.Sprintf("kv-benchmark-get-key-%d", rand.IntN(c.X))
 		}
 		close(gets)
 	}()
 
 	start := time.Now()
-	for i := 0; i < c.W; i++ {
+	for range c.W {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

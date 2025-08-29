@@ -16,7 +16,6 @@ To connect to a postgres database, use `--type postgres --connection 'postgres:/
 
 Start the development services with `xc docker-run-services` to get RQLite, PostgreSQL, and NATS running locally.
 
-
 ```bash
 # Create a new data.db file (use the --connection flag to specify a different file).
 kv init
@@ -61,6 +60,13 @@ kv lock acquire <name> <locked-by> --duration=<duration>
 kv lock release <name> <locked-by>
 kv lock status <name>
 
+# Task operations:
+echo '{"message": "Hello World"}' | kv task new log
+kv task list [--status=pending|running|completed|failed|cancelled] [--name=<name>]
+kv task get <task-id>
+kv task cancel <task-id>
+kv task run [--runner-id=<id>] [--poll-interval=10s] [--lock-duration=5m]
+
 # Patch a key:
 echo '{"field": "value"}' | kv patch <key>
 
@@ -102,6 +108,11 @@ Commands:
   lock acquire <name> <locked-by>          Acquire a lock.
   lock release <name> <locked-by>          Release a lock.
   lock status <name>                       Show the status of a lock.
+  task new <name>                          Create a new task (reads payload from stdin).
+  task list                                List tasks.
+  task get <id>                            Get a task by ID.
+  task cancel <id>                         Cancel a task by ID.
+  task run                                 Run task runner to process scheduled tasks.
   benchmark get [<x> [<n> [<w>]]]          Benchmark getting records.
   benchmark put [<n> [<w>]]                Benchmark putting records.
   benchmark patch [<n> [<w>]]              Benchmark patching records.
@@ -111,13 +122,18 @@ Run "kv <command> --help" for more information on a command.
 
 ## Library Usage
 
-`Store` is an interface with 3 implementations:
+The library provides two main interfaces:
+
+* `Store` - Key-value operations, streaming, and locking
+* `Scheduler` - Task scheduling and coordination
+
+Both interfaces have 3 implementations:
 
 * `sqlitekv` - SQLite implementation
 * `rqlitekv` - RQLite implementation  
 * `postgreskv` - PostgreSQL implementation
 
-### Simple Example
+### Simple Store Example
 
 ```go
 package main
@@ -148,7 +164,7 @@ func main() {
   defer pool.Close()
 
   // Create a store.
-  store := sqlitekv.New(pool)
+  store := sqlitekv.NewStore(pool)
 
   // Initialize the store (creates tables).
   if err := store.Init(ctx); err != nil {
@@ -181,39 +197,48 @@ func main() {
 #### SQLite
 
 ```go
-// SQLite.
+// SQLite Store.
 pool, err := sqlitex.NewPool("file:data.db?mode=rwc", sqlitex.PoolOptions{})
 if err != nil {
   return err
 }
 defer pool.Close()
-store := sqlitekv.New(pool)
+store := sqlitekv.NewStore(pool)
+
+// SQLite Scheduler.
+scheduler := sqlitekv.NewScheduler(pool)
 ```
 
 #### RQLite
 
 ```go
-// RQLite.
+// RQLite Store.
 client := rqlitehttp.NewClient("http://localhost:4001", nil)
 client.SetBasicAuth("admin", "secret") // If auth is required.
-store := rqlitekv.New(client)
+store := rqlitekv.NewStore(client)
+
+// RQLite Scheduler.
+scheduler := rqlitekv.NewScheduler(client)
 ```
 
 #### PostgreSQL
 
 ```go
-// PostgreSQL.
+// PostgreSQL Store.
 pool, err := pgxpool.New(ctx, "postgres://user:password@localhost:5432/dbname?sslmode=disable")
 if err != nil {
   return err
 }
 defer pool.Close()
-store := postgreskv.New(pool)
+store := postgreskv.NewStore(pool)
+
+// PostgreSQL Scheduler.
+scheduler := postgreskv.NewScheduler(pool)
 ```
 
 ## Store Interface
 
-The `Store` interface provides the following methods:
+The `Store` interface provides key-value operations, streaming, and locking:
 
 ```go
 type Store interface {
@@ -242,7 +267,165 @@ type Store interface {
 }
 ```
 
+## Scheduler Interface
+
+The `Scheduler` interface provides task scheduling and coordination:
+
+```go
+type Scheduler interface {
+  New(ctx context.Context, task Task) (err error)
+  Get(ctx context.Context, id string) (task Task, ok bool, err error)
+  List(ctx context.Context, status TaskStatus, name string, offset, limit int) (tasks []Task, err error)
+  Cancel(ctx context.Context, id string) (err error)
+  Lock(ctx context.Context, runnerID string, lockDuration time.Duration, taskTypes ...string) (task Task, locked bool, err error)
+  Release(ctx context.Context, id string, runnerID string, status TaskStatus, errorMessage string) (err error)
+}
+```
+
 See `store.go` for mutation helpers and record helpers.
+
+## Scheduled Tasks
+
+The KV store supports scheduled and one-off tasks that are executed with distributed coordination to ensure only one compute node processes each task.
+
+### Task Types
+
+Tasks are one-off executions scheduled for a specific time.
+
+For recurring/cron-style scheduling, clients can implement their own schedulers using the existing lock primitives to ensure only one scheduler instance runs, then create new one-off tasks as needed.
+
+### Task States
+
+* `pending` - Task is waiting to be executed
+* `running` - Task is currently being processed by a runner
+* `completed` - Task finished successfully
+* `failed` - Task failed after exhausting retries
+* `cancelled` - Task was manually cancelled
+
+### Creating Tasks
+
+```go
+// Create a scheduler.
+scheduler := sqlitekv.NewScheduler(pool)
+
+// Create a one-off task.
+task := kv.Task{
+    ID:             uuid.New().String(),
+    Name:           "send-email",
+    Payload:        []byte(`{"to": "user@example.com", "subject": "Hello"}`),
+    Status:         kv.TaskStatusPending,
+    Created:        time.Now().UTC(),
+    ScheduledFor:   time.Now().UTC().Add(5 * time.Minute), // Run in 5 minutes
+    MaxRetries:     3,
+    TimeoutSeconds: 300,
+}
+
+err := scheduler.New(ctx, task)
+```
+
+### Task Runner
+
+```go
+// Create and configure a task runner.
+scheduler := sqlitekv.NewScheduler(pool)
+runner := kv.NewTaskRunner(scheduler, "worker-1")
+runner.PollInterval = 10 * time.Second
+runner.LockDuration = 5 * time.Minute
+
+// Register task handlers.
+runner.RegisterHandler("send-email", func(ctx context.Context, task kv.Task) error {
+    var payload struct {
+        To      string `json:"to"`
+        Subject string `json:"subject"`
+    }
+    if err := json.Unmarshal(task.Payload, &payload); err != nil {
+        return fmt.Errorf("invalid payload: %w", err)
+    }
+
+    // Send email logic here.
+    fmt.Printf("Sending email to %s: %s\n", payload.To, payload.Subject)
+    return nil
+})
+
+runner.RegisterHandler("cleanup", func(ctx context.Context, task kv.Task) error {
+    // Cleanup logic here.
+    return nil
+})
+
+// Run the task runner (blocks until context is cancelled)
+err := runner.Run(ctx)
+```
+
+### CLI Examples
+
+```bash
+# Create a log task.
+echo '{"message": "Hello World"}' | kv task new log
+
+# List all tasks.
+kv task list
+
+# List only pending tasks.
+kv task list --status=pending
+
+# Get a specific task.
+kv task get <task-id>
+
+# Cancel a task.
+kv task cancel <task-id>
+
+# Run task processor.
+kv task run --poll-interval=5s --lock-duration=2m
+```
+
+### Built-in Task Handlers
+
+The CLI task runner includes these example handlers:
+
+* `log` - Logs the task payload to stdout
+* `echo` - Echoes the task payload
+
+### Implementing Cron Scheduling
+
+For recurring tasks, implement a scheduler client using the existing lock primitives:
+
+```go
+func runCronScheduler(ctx context.Context, store kv.Store, scheduler kv.Scheduler) error {
+    ticker := time.NewTicker(time.Minute)
+    defer ticker.Stop()
+    
+    for {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        case <-ticker.C:
+            // Try to acquire or extend the scheduler lock.
+            acquired, err := store.LockAcquire(ctx, "cron-scheduler", "instance-1", 5*time.Minute)
+            if err != nil {
+              //TODO: Log error.
+              continue
+            }
+            if !acquired {
+              continue
+            }
+  
+            //TODO Schedule any due cron jobs using scheduler.New()...
+  
+            // Release lock
+            store.LockRelease(ctx, "cron-scheduler", "instance-1")
+        }
+    }
+}
+```
+
+### Distributed Coordination
+
+Tasks use the same locking mechanism as stream consumers to ensure:
+
+* Only one runner processes each task
+* Failed runners don't block tasks indefinitely
+* Automatic retry with exponential backoff
+* Configurable timeouts and retry limits
 
 ## Tasks
 
@@ -368,4 +551,18 @@ Connect to NATS server for testing and monitoring.
 
 ```bash
 nats --server=nats://localhost:4222 server info
+```
+
+### drop-tables
+
+```bash
+sqlite3 data.db "DROP TABLE IF EXISTS kv; DROP TABLE IF EXISTS locks; DROP TABLE IF EXISTS stream; DROP TABLE IF EXISTS tasks; DROP TABLE IF EXISTS migration_version;"
+echo "DROP TABLE IF EXISTS kv, locks, stream, tasks, migration_version CASCADE;" | PGPASSWORD=secret pgcli -h localhost -u postgres -d postgres
+curl -XPOST 'http://admin:secret@localhost:4001/db/execute?pretty&timings' -H "Content-Type: application/json" -d '[
+    "DROP TABLE IF EXISTS kv",
+    "DROP TABLE IF EXISTS locks", 
+    "DROP TABLE IF EXISTS stream",
+    "DROP TABLE IF EXISTS tasks",
+    "DROP TABLE IF EXISTS migration_version"
+]'
 ```

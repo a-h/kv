@@ -15,6 +15,7 @@ type Counter struct {
 	Count int `json:"count"`
 }
 
+//nolint:unparam // Interface requirement - must return error even if implementation doesn't use it
 func (c *Counter) Process(event statemachine.InboundEvent) ([]statemachine.OutboundEvent, error) {
 	switch e := event.(type) {
 	case Increment:
@@ -65,16 +66,22 @@ func (CounterUpdated) EventName() string { return "CounterUpdated" }
 func (CounterUpdated) IsOutbound()       {}
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	pool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer pool.Close()
 
-	store := sqlitekv.New(pool)
+	store := sqlitekv.NewStore(pool)
 	err = store.Init(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// Create a new counter machine.
@@ -87,14 +94,14 @@ func main() {
 	// the results.
 	err = processor.Process(context.Background(), Increment{Amount: 5})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	fmt.Println("After increment:", counter.Count)
 
 	// Process the next command.
 	err = processor.Process(context.Background(), Decrement{Amount: 2})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	fmt.Println("After decrement:", counter.Count)
 
@@ -102,7 +109,7 @@ func main() {
 	loadedCounter := &Counter{}
 	loadedProcessor, err := statemachine.Load(context.Background(), store, "counter-1", loadedCounter)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	fmt.Println("Loaded count:", loadedCounter.Count)
 	fmt.Println("Version:", loadedProcessor.Version)
@@ -112,18 +119,20 @@ func main() {
 	// State can be loaded directly from the store.
 	_, ok, err := store.Get(ctx, "counter-1/_state", &counter)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if !ok {
 		fmt.Printf("State record not found\n")
-		return
+		return nil
 	}
 	fmt.Printf("Stored state: %+v\n", counter)
 
 	// The commands / inbound events, and outbound events can be loaded from the store.
 	inboundRecords, err := store.GetPrefix(ctx, "counter-1/events/", 0, 10)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	fmt.Printf("Found %d event records\n", len(inboundRecords))
+
+	return nil
 }

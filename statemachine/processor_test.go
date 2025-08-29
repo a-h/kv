@@ -3,7 +3,8 @@ package statemachine_test
 import (
 	"context"
 	"errors"
-	"math/rand"
+	"math/rand/v2"
+
 	"strings"
 	"testing"
 
@@ -132,7 +133,7 @@ func TestSlotMachineProcessor(t *testing.T) {
 	}
 	defer pool.Close()
 
-	store := sqlitekv.New(pool)
+	store := sqlitekv.NewStore(pool)
 	err = store.Init(context.Background())
 	if err != nil {
 		t.Fatalf("failed to initialize store: %v", err)
@@ -237,7 +238,7 @@ func TestBatchProcessor(t *testing.T) {
 	}
 	defer pool.Close()
 
-	store := sqlitekv.New(pool)
+	store := sqlitekv.NewStore(pool)
 	err = store.Init(context.Background())
 	if err != nil {
 		t.Fatalf("failed to initialize store: %v", err)
@@ -291,7 +292,7 @@ func TestEventStorage(t *testing.T) {
 	}
 	defer pool.Close()
 
-	store := sqlitekv.New(pool)
+	store := sqlitekv.NewStore(pool)
 	err = store.Init(context.Background())
 	if err != nil {
 		t.Fatalf("failed to initialize store: %v", err)

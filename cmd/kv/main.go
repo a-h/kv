@@ -28,7 +28,7 @@ func (g GlobalFlags) Store() (kv.Store, error) {
 		if err != nil {
 			return nil, err
 		}
-		return sqlitekv.New(pool), nil
+		return sqlitekv.NewStore(pool), nil
 	case "rqlite":
 		u, err := url.Parse(g.Connection)
 		if err != nil {
@@ -42,13 +42,46 @@ func (g GlobalFlags) Store() (kv.Store, error) {
 		if user != "" && password != "" {
 			client.SetBasicAuth(user, password)
 		}
-		return rqlitekv.New(client), nil
+		return rqlitekv.NewStore(client), nil
 	case "postgres":
 		pool, err := pgxpool.New(context.Background(), g.Connection)
 		if err != nil {
 			return nil, err
 		}
-		return postgreskv.New(pool), nil
+		return postgreskv.NewStore(pool), nil
+	default:
+		return nil, fmt.Errorf("unknown store type %q", g.Type)
+	}
+}
+
+func (g GlobalFlags) Scheduler() (kv.Scheduler, error) {
+	switch g.Type {
+	case "sqlite":
+		pool, err := sqlitex.NewPool(g.Connection, sqlitex.PoolOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return sqlitekv.NewScheduler(pool), nil
+	case "rqlite":
+		u, err := url.Parse(g.Connection)
+		if err != nil {
+			return nil, err
+		}
+		user := u.Query().Get("user")
+		password := u.Query().Get("password")
+		// Remove user and password from the connection string.
+		u.RawQuery = ""
+		client := rqlitehttp.NewClient(u.String(), nil)
+		if user != "" && password != "" {
+			client.SetBasicAuth(user, password)
+		}
+		return rqlitekv.NewScheduler(client), nil
+	case "postgres":
+		pool, err := pgxpool.New(context.Background(), g.Connection)
+		if err != nil {
+			return nil, err
+		}
+		return postgreskv.NewScheduler(pool), nil
 	default:
 		return nil, fmt.Errorf("unknown store type %q", g.Type)
 	}
@@ -68,6 +101,7 @@ type CLI struct {
 	Stream    StreamCommand    `cmd:"stream" help:"Stream operations (get, seq, trim)."`
 	Consumer  ConsumerCommand  `cmd:"consumer" help:"Consumer operations (get, status, commit)."`
 	Lock      LockCommand      `cmd:"lock" help:"Lock operations (acquire, release)."`
+	Task      TaskCommand      `cmd:"task" help:"Task operations (create, list, get, delete, run)."`
 }
 
 func main() {

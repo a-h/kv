@@ -1,10 +1,10 @@
 -- Create migration version table to track schema version
-CREATE TABLE IF NOT EXISTS migration_version (
-    version INTEGER PRIMARY KEY,
-    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+create table if not exists migration_version (
+    version integer primary key,
+    applied_at text not null default (datetime('now'))
 );
 
 -- Insert initial version if table is empty
-INSERT INTO migration_version (version, applied_at) 
-SELECT 1, datetime('now') 
-WHERE NOT EXISTS (SELECT 1 FROM migration_version);
+insert into migration_version (version, applied_at) 
+select 1, datetime('now') 
+where not exists (select 1 from migration_version);

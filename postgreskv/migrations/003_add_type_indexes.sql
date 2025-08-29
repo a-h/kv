@@ -1,5 +1,5 @@
 -- kv type + key index
-CREATE INDEX IF NOT EXISTS idx_kv_type_key ON kv(type, key);
+create index if not exists idx_kv_type_key on kv(type, key);
 
 -- stream type + seq index
-CREATE INDEX IF NOT EXISTS idx_stream_type_seq ON stream(type, seq);
+create index if not exists idx_stream_type_seq on stream(type, seq);

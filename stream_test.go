@@ -183,6 +183,27 @@ func (m *mockStore) SetNow(now func() time.Time) {
 		m.setNowFunc(now)
 	}
 }
+func (m *mockStore) TaskCreate(ctx context.Context, task Task) error {
+	return nil
+}
+func (m *mockStore) TaskGet(ctx context.Context, id string) (task Task, ok bool, err error) {
+	return Task{}, false, nil
+}
+func (m *mockStore) TaskList(ctx context.Context, status TaskStatus, name string, offset, limit int) ([]Task, error) {
+	return nil, nil
+}
+func (m *mockStore) TaskUpdate(ctx context.Context, task Task) error {
+	return nil
+}
+func (m *mockStore) TaskDelete(ctx context.Context, id string) error {
+	return nil
+}
+func (m *mockStore) TaskGetNextPending(ctx context.Context, runnerID string, lockDuration time.Duration, taskTypes ...string) (task Task, locked bool, err error) {
+	return Task{}, false, nil
+}
+func (m *mockStore) TaskReleaseLock(ctx context.Context, id string, runnerID string) error {
+	return nil
+}
 
 func TestStreamConsumer(t *testing.T) {
 	t.Run("If no records are returned, a sleep is returned from Get", func(t *testing.T) {

@@ -35,7 +35,7 @@ func createTestStore(t *testing.T) kv.Store {
 	}
 	t.Cleanup(func() { pool.Close() })
 
-	store := sqlitekv.New(pool)
+	store := sqlitekv.NewStore(pool)
 	if err := store.Init(context.Background()); err != nil {
 		t.Fatalf("failed to initialize store: %v", err)
 	}

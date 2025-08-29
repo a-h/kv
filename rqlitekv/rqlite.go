@@ -44,223 +44,6 @@ func (rq *Rqlite) Init(ctx context.Context) error {
 	return runner.Migrate(ctx)
 }
 
-func (rq *Rqlite) Get(ctx context.Context, key string, v any) (r kv.Record, ok bool, err error) {
-	stmts := rqlitehttp.SQLStatements{
-		{
-			SQL: `select key, version, json(value) as value, type, created from kv where key = :key;`,
-			NamedParams: map[string]any{
-				"key": key,
-			},
-		},
-	}
-	outputs, err := rq.Query(ctx, stmts)
-	if err != nil {
-		return kv.Record{}, false, fmt.Errorf("get: %w", err)
-	}
-	rows := outputs[0]
-	if len(rows) == 0 {
-		return kv.Record{}, false, nil
-	}
-	if len(rows) != 1 {
-		return kv.Record{}, false, fmt.Errorf("get: multiple rows found for key %q", key)
-	}
-	r = rows[0]
-	err = json.Unmarshal(r.Value, v)
-	return r, true, err
-}
-
-func (rq *Rqlite) GetPrefix(ctx context.Context, prefix string, offset, limit int) (rows []kv.Record, err error) {
-	stmts := rqlitehttp.SQLStatements{
-		{
-			SQL: `select key, version, json(value) as value, type, created from kv where key like :prefix order by key limit :limit offset :offset;`,
-			NamedParams: map[string]any{
-				"prefix": prefix + "%",
-				"limit":  limit,
-				"offset": offset,
-			},
-		},
-	}
-	outputs, err := rq.Query(ctx, stmts)
-	if err != nil {
-		return nil, fmt.Errorf("getprefix: %w", err)
-	}
-	return outputs[0], nil
-}
-
-func (rq *Rqlite) GetRange(ctx context.Context, from, to string, offset, limit int) (rows []kv.Record, err error) {
-	stmts := rqlitehttp.SQLStatements{
-		{
-			SQL: `select key, version, json(value) as value, type, created from kv where key >= :from and key < :to order by key limit :limit offset :offset;`,
-			NamedParams: map[string]any{
-				"from":   from,
-				"to":     to,
-				"limit":  limit,
-				"offset": offset,
-			},
-		},
-	}
-	outputs, err := rq.Query(ctx, stmts)
-	if err != nil {
-		return nil, fmt.Errorf("getrange: %w", err)
-	}
-	return outputs[0], nil
-}
-
-func (rq *Rqlite) List(ctx context.Context, start, limit int) (rows []kv.Record, err error) {
-	stmts := rqlitehttp.SQLStatements{
-		{
-			SQL: `select key, version, json(value) as value, type, created from kv order by key limit :limit offset :offset;`,
-			NamedParams: map[string]any{
-				"limit":  limit,
-				"offset": start,
-			},
-		},
-	}
-	outputs, err := rq.Query(ctx, stmts)
-	if err != nil {
-		return nil, fmt.Errorf("list: %w", err)
-	}
-	return outputs[0], nil
-}
-
-func (rq *Rqlite) GetType(ctx context.Context, t kv.Type, offset, limit int) (rows []kv.Record, err error) {
-	var stmt rqlitehttp.SQLStatement
-
-	if t == kv.TypeAll {
-		stmt = rqlitehttp.SQLStatement{
-			SQL: `select key, version, json(value) as value, type, created from kv order by key limit :limit offset :offset;`,
-			NamedParams: map[string]any{
-				"limit":  limit,
-				"offset": offset,
-			},
-		}
-	} else {
-		stmt = rqlitehttp.SQLStatement{
-			SQL: `select key, version, json(value) as value, type, created from kv where type = :type order by key limit :limit offset :offset;`,
-			NamedParams: map[string]any{
-				"type":   string(t),
-				"limit":  limit,
-				"offset": offset,
-			},
-		}
-	}
-
-	outputs, err := rq.Query(ctx, rqlitehttp.SQLStatements{stmt})
-	if err != nil {
-		return nil, fmt.Errorf("gettype: %w", err)
-	}
-	return outputs[0], nil
-}
-
-func (rq *Rqlite) Put(ctx context.Context, key string, version int, value any) (err error) {
-	stmt, err := rq.createPutMutationStatement(kv.Put(key, version, value))
-	if err != nil {
-		return fmt.Errorf("put: %w", err)
-	}
-	rowsAffected, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
-	if err != nil {
-		if errors.Is(err, kv.ErrVersionMismatch) {
-			return kv.ErrVersionMismatch
-		}
-		return fmt.Errorf("put: %w", err)
-	}
-	if len(rowsAffected) != 1 {
-		return fmt.Errorf("put: expected 1 result, got %d", len(rowsAffected))
-	}
-	if rowsAffected[0] == 0 {
-		return kv.ErrVersionMismatch
-	}
-	return nil
-}
-
-func (rq *Rqlite) Delete(ctx context.Context, keys ...string) (rowsAffected int, err error) {
-	stmt, err := rq.createDeleteMutationStatement(kv.Delete(keys...))
-	if err != nil {
-		return 0, fmt.Errorf("delete: %w", err)
-	}
-	allRowsAffected, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
-	if err != nil {
-		return 0, fmt.Errorf("delete: %w", err)
-	}
-	if len(allRowsAffected) != 1 {
-		return 0, fmt.Errorf("delete: expected 1 result, got %d", len(allRowsAffected))
-	}
-	return int(allRowsAffected[0]), nil
-}
-
-func (rq *Rqlite) DeletePrefix(ctx context.Context, prefix string, offset, limit int) (rowsAffected int, err error) {
-	stmt, err := rq.createDeletePrefixMutationStatement(kv.DeletePrefix(prefix, offset, limit))
-	if err != nil {
-		return 0, fmt.Errorf("deleteprefix: %w", err)
-	}
-	allRowsAffected, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
-	if err != nil {
-		return 0, fmt.Errorf("deleteprefix: %w", err)
-	}
-	if len(allRowsAffected) != 1 {
-		return 0, fmt.Errorf("deleteprefix: expected 1 result, got %d", len(allRowsAffected))
-	}
-	return int(allRowsAffected[0]), nil
-}
-
-func (rq *Rqlite) DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int, err error) {
-	stmt, err := rq.createDeleteRangeMutationStatement(kv.DeleteRange(from, to, offset, limit))
-	if err != nil {
-		return 0, fmt.Errorf("deleterange: %w", err)
-	}
-	allRowsAffected, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
-	if err != nil {
-		return 0, fmt.Errorf("deleterange: %w", err)
-	}
-	if len(allRowsAffected) != 1 {
-		return 0, fmt.Errorf("deleterange: expected 1 result, got %d", len(allRowsAffected))
-	}
-	return int(allRowsAffected[0]), nil
-}
-
-func (rq *Rqlite) Count(ctx context.Context) (count int, err error) {
-	sql := `select count(*) from kv;`
-	return rq.QueryScalarInt64(ctx, sql, nil)
-}
-
-func (rq *Rqlite) CountPrefix(ctx context.Context, prefix string) (count int, err error) {
-	sql := `select count(*) from kv where key like :prefix;`
-	args := map[string]any{
-		"prefix": prefix + "%",
-	}
-	return rq.QueryScalarInt64(ctx, sql, args)
-}
-
-func (rq *Rqlite) CountRange(ctx context.Context, from, to string) (count int, err error) {
-	sql := `select count(*) from kv where key >= :from and key < :to;`
-	args := map[string]any{
-		"from": from,
-		"to":   to,
-	}
-	return rq.QueryScalarInt64(ctx, sql, args)
-}
-
-func (rq *Rqlite) Patch(ctx context.Context, key string, version int, patch any) (err error) {
-	stmt, err := rq.createPatchMutationStatement(kv.Patch(key, version, patch))
-	if err != nil {
-		return fmt.Errorf("patch: %w", err)
-	}
-	allRowsAffected, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
-	if err != nil {
-		if errors.Is(err, kv.ErrVersionMismatch) {
-			return kv.ErrVersionMismatch
-		}
-		return fmt.Errorf("patch: %w", err)
-	}
-	if len(allRowsAffected) != 1 {
-		return fmt.Errorf("patch: expected 1 result, got %d", len(allRowsAffected))
-	}
-	if allRowsAffected[0] == 0 {
-		return kv.ErrVersionMismatch
-	}
-	return nil
-}
-
 func (rq *Rqlite) Query(ctx context.Context, stmts rqlitehttp.SQLStatements) (outputs [][]kv.Record, err error) {
 	opts := &rqlitehttp.QueryOptions{
 		Timeout: rq.Timeout,
@@ -450,33 +233,6 @@ func (rq *Rqlite) Mutate(ctx context.Context, stmts rqlitehttp.SQLStatements) (r
 	return rowsAffected, errors.Join(errs...)
 }
 
-func (rq *Rqlite) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]int, error) {
-	stmts := make(rqlitehttp.SQLStatements, len(mutations))
-	for i, m := range mutations {
-		var s rqlitehttp.SQLStatement
-		var err error
-		switch m := m.(type) {
-		case kv.PutMutation:
-			s, err = rq.createPutMutationStatement(m)
-		case kv.PatchMutation:
-			s, err = rq.createPatchMutationStatement(m)
-		case kv.DeleteMutation:
-			s, err = rq.createDeleteMutationStatement(m)
-		case kv.DeletePrefixMutation:
-			s, err = rq.createDeletePrefixMutationStatement(m)
-		case kv.DeleteRangeMutation:
-			s, err = rq.createDeleteRangeMutationStatement(m)
-		default:
-			return nil, fmt.Errorf("mutateall: unsupported mutation type %T", m)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("mutateall: error creating statement: %w", err)
-		}
-		stmts[i] = s
-	}
-	return rq.Mutate(ctx, stmts)
-}
-
 func (rq *Rqlite) createPutMutationStatement(m kv.PutMutation) (s rqlitehttp.SQLStatement, err error) {
 	jsonValue, err := json.Marshal(m.Value)
 	if err != nil {
@@ -564,15 +320,16 @@ func (rq *Rqlite) createDeletePrefixMutationStatement(m kv.DeletePrefixMutation)
 	return s, nil
 }
 
-func (rq *Rqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) (s rqlitehttp.SQLStatement, err error) {
-	s.SQL = `delete from kv where key in (select key from kv where key >= :from and key < :to order by key limit :limit offset :offset);`
-	s.NamedParams = map[string]any{
-		"from":   m.From,
-		"to":     m.To,
-		"limit":  m.Limit,
-		"offset": m.Offset,
+func (rq *Rqlite) createDeleteRangeMutationStatement(m kv.DeleteRangeMutation) rqlitehttp.SQLStatement {
+	return rqlitehttp.SQLStatement{
+		SQL: `delete from kv where key in (select key from kv where key >= :from and key < :to order by key limit :limit offset :offset);`,
+		NamedParams: map[string]any{
+			"from":   m.From,
+			"to":     m.To,
+			"limit":  m.Limit,
+			"offset": m.Offset,
+		},
 	}
-	return s, nil
 }
 
 func (rq *Rqlite) Stream(ctx context.Context, t kv.Type, seq int, limit int) (rows []kv.StreamRecord, err error) {

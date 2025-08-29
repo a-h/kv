@@ -1,1 +1,1 @@
-SELECT COALESCE(MAX(version), 0) FROM migration_version;
+select coalesce(max(version), 0) from migration_version;

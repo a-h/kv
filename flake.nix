@@ -104,6 +104,7 @@
         pkgs.go
         pkgs.gopls
         pkgs.golangci-lint
+        pkgs.gosec
         # Task runner.
         pkgs.xc
         pkgs.version

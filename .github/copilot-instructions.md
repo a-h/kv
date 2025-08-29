@@ -8,13 +8,9 @@ Comments MUST be complete sentences with proper punctuation.
 
 ### Comments
 
-- Only write comments for non-obvious code.
-- Write comments using proper punctuation.
-- Write complete sentences, terminating in a full stop.
-- Write comments on the line above statements, instead of on the same line.
-- Omit comments that describe what the code does.
-- Provide comments for public APIs.
-- Write comments on their own lines, not trailing after statements.
+- Do not write comments, except for public functions, methods, and types.
+- If you are writing comments, use proper punctuation - complete sentences, terminating in a full stop.
+- Never write trailing comments after a statement.
 
 ### Variable Declaration
 - **Use idiomatic zero value initialization**: Use `var count int` instead of `count := 0`, and `var found bool` instead of `found := false` when initializing to zero values.
@@ -31,3 +27,7 @@ Comments MUST be complete sentences with proper punctuation.
 - **Consolidate functionality**: Prefer simpler, consolidated APIs over complex multi-type architectures when the simpler approach provides the same functionality safely.
 
 These guidelines focus on writing clean, readable, and maintainable Go code that follows community conventions.
+
+### SQL
+- Use use lowercase for SQL queries and SQL statements.
+- Always use constant strings for SQL, never concatenate strings to build SQL queries.

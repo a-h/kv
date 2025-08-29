@@ -133,8 +133,7 @@ func createStore(cli CLI) (kv.Store, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite pool: %w", err)
 		}
-		return sqlitekv.New(pool), nil
-
+		return sqlitekv.NewStore(pool), nil
 	case "rqlite":
 		u, err := url.Parse(cli.StoreConnection)
 		if err != nil {
@@ -148,15 +147,13 @@ func createStore(cli CLI) (kv.Store, error) {
 		if user != "" && password != "" {
 			client.SetBasicAuth(user, password)
 		}
-		return rqlitekv.New(client), nil
-
+		return rqlitekv.NewStore(client), nil
 	case "postgres":
 		pool, err := pgxpool.New(context.Background(), cli.StoreConnection)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Postgres pool: %w", err)
 		}
-		return postgreskv.New(pool), nil
-
+		return postgreskv.NewStore(pool), nil
 	default:
 		return nil, fmt.Errorf("unsupported store type: %s", cli.StoreType)
 	}
@@ -166,11 +163,12 @@ func connectNATS(cli CLI) (*nats.Conn, error) {
 	var opts []nats.Option
 
 	// Add authentication options.
-	if cli.NatsCredsFile != "" {
+	switch {
+	case cli.NatsCredsFile != "":
 		opts = append(opts, nats.UserCredentials(cli.NatsCredsFile))
-	} else if cli.NatsToken != "" {
+	case cli.NatsToken != "":
 		opts = append(opts, nats.Token(cli.NatsToken))
-	} else if cli.NatsUser != "" && cli.NatsPassword != "" {
+	case cli.NatsUser != "" && cli.NatsPassword != "":
 		opts = append(opts, nats.UserInfo(cli.NatsUser, cli.NatsPassword))
 	}
 

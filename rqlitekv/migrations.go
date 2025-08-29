@@ -29,8 +29,18 @@ func (re *RqliteExecutor) Exec(ctx context.Context, sql string) error {
 		Transaction: true,
 		Wait:        true,
 	}
-	_, err := re.client.Execute(ctx, stmts, opts)
-	return err
+	qr, err := re.client.Execute(ctx, stmts, opts)
+	if err != nil {
+		return err
+	}
+
+	for i, result := range qr.Results {
+		if result.Error != "" {
+			return fmt.Errorf("sql execution failed: index %d: %s", i, result.Error)
+		}
+	}
+
+	return nil
 }
 
 func (re *RqliteExecutor) QueryIntScalar(ctx context.Context, sql string) (int, error) {

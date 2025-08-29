@@ -7,6 +7,8 @@ import (
 	"math"
 	"reflect"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func init() {
@@ -70,6 +72,67 @@ type StreamRecord struct {
 }
 
 var ErrVersionMismatch = errors.New("version mismatch")
+
+// TaskStatus represents the current state of a task.
+type TaskStatus string
+
+const (
+	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusRunning   TaskStatus = "running"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusFailed    TaskStatus = "failed"
+	TaskStatusCancelled TaskStatus = "cancelled"
+)
+
+// Task represents a one-off task.
+type Task struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Payload is the task data/configuration as JSON.
+	Payload []byte     `json:"payload"`
+	Status  TaskStatus `json:"status"`
+	Created time.Time  `json:"created"`
+	// ScheduledFor is when the task should run.
+	ScheduledFor time.Time `json:"scheduledFor"`
+	// StartedAt is when the task actually started.
+	StartedAt *time.Time `json:"startedAt"`
+	// CompletedAt is when the task finished.
+	CompletedAt *time.Time `json:"completedAt"`
+	// LastError is the last error message if failed.
+	LastError      string `json:"lastError"`
+	RetryCount     int    `json:"retryCount"`
+	MaxRetries     int    `json:"maxRetries"`
+	TimeoutSeconds int    `json:"timeoutSeconds"`
+	// LockedBy is which runner is processing this task.
+	LockedBy string `json:"lockedBy"`
+	// LockedAt is when the task was locked.
+	LockedAt *time.Time `json:"lockedAt"`
+	// LockExpiresAt is when the lock expires.
+	LockExpiresAt *time.Time `json:"lockExpiresAt"`
+}
+
+// NewTask creates a new task with required fields and sensible defaults.
+// The ID will be generated automatically.
+func NewTask(name string, payload []byte) Task {
+	now := time.Now()
+	return Task{
+		ID:             uuid.New().String(),
+		Name:           name,
+		Payload:        payload,
+		Status:         TaskStatusPending,
+		Created:        now,
+		ScheduledFor:   now,
+		MaxRetries:     3,
+		TimeoutSeconds: 300,
+	}
+}
+
+// NewScheduledTask creates a new task scheduled to run at a specific time.
+func NewScheduledTask(name string, payload []byte, scheduledFor time.Time) Task {
+	task := NewTask(name, payload)
+	task.ScheduledFor = scheduledFor
+	return task
+}
 
 // ValuesOf returns the values of the records, unmarshaled into the given type.
 func ValuesOf[T any](records []Record) (values []T, err error) {
@@ -176,6 +239,25 @@ type Store interface {
 	SetNow(now func() time.Time)
 	// LockStatus returns the status of a lock.
 	LockStatus(ctx context.Context, name string) (status LockStatus, ok bool, err error)
+}
+
+type Scheduler interface {
+	// New creates a new task with the given parameters.
+	New(ctx context.Context, task Task) (err error)
+	// Get retrieves a task by ID.
+	Get(ctx context.Context, id string) (task Task, ok bool, err error)
+	// List retrieves tasks with optional filtering by status and name.
+	List(ctx context.Context, status TaskStatus, name string, offset, limit int) (tasks []Task, err error)
+	// Cancel cancels a task by setting its status to cancelled.
+	// If the task is already running, it will continue but won't be retried.
+	Cancel(ctx context.Context, id string) (err error)
+	// Lock retrieves the next pending task that should be run and marks it as running.
+	// Returns the task and whether it was successfully locked by the given runner ID.
+	// If taskTypes is empty, it handles all task types.
+	Lock(ctx context.Context, runnerID string, lockDuration time.Duration, taskTypes ...string) (task Task, locked bool, err error)
+	// Release releases the lock on a task and updates its final status.
+	// Based on the status, it handles retry logic and scheduling automatically.
+	Release(ctx context.Context, id string, runnerID string, status TaskStatus, errorMessage string) (err error)
 }
 
 type Mutation interface {
