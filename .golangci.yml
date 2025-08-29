@@ -94,5 +94,10 @@ issues:
         - unparam
         - gocritic
 
+    # Exclude unparam issues in CLI task handlers (example handlers).
+    - path: cmd/kv/task_run\.go
+      linters:
+        - unparam
+
   max-issues-per-linter: 0
   max-same-issues: 0
