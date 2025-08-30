@@ -46,7 +46,6 @@ func (pe *PostgresExecutor) SetVersion(ctx context.Context, migrationSQL string,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
 
 	if _, err := tx.Exec(ctx, migrationSQL); err != nil {
 		return err
