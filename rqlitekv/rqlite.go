@@ -26,6 +26,8 @@ type Rqlite struct {
 	Timeout         time.Duration
 	ReadConsistency rqlitehttp.ReadConsistencyLevel
 	Now             func() time.Time
+	initOnce        sync.Once
+	initErr         error
 }
 
 func (rq *Rqlite) SetNow(now func() time.Time) {
@@ -35,22 +37,17 @@ func (rq *Rqlite) SetNow(now func() time.Time) {
 	rq.Now = now
 }
 
-var (
-	initOnce sync.Once
-	initErr  error
-)
-
 func (rq *Rqlite) Init(ctx context.Context) error {
-	initOnce.Do(func() {
+	rq.initOnce.Do(func() {
 		executor := &RqliteExecutor{
 			client:          rq.Client,
 			timeout:         rq.Timeout,
 			readConsistency: rq.ReadConsistency,
 		}
 		runner := kv.NewMigrationRunner(executor, migrationsFS)
-		initErr = runner.Migrate(ctx)
+		rq.initErr = runner.Migrate(ctx)
 	})
-	return initErr
+	return rq.initErr
 }
 
 func (rq *Rqlite) Query(ctx context.Context, stmts rqlitehttp.SQLStatements) (outputs [][]kv.Record, err error) {

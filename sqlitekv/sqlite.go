@@ -20,8 +20,10 @@ func newPool(pool *sqlitex.Pool) *Sqlite {
 }
 
 type Sqlite struct {
-	Pool *sqlitex.Pool
-	Now  func() time.Time
+	Pool     *sqlitex.Pool
+	Now      func() time.Time
+	initOnce sync.Once
+	initErr  error
 }
 
 func (s *Sqlite) SetNow(now func() time.Time) {
@@ -31,16 +33,11 @@ func (s *Sqlite) SetNow(now func() time.Time) {
 	s.Now = now
 }
 
-var (
-	initOnce sync.Once
-	initErr  error
-)
-
 func (s *Sqlite) Init(ctx context.Context) error {
-	initOnce.Do(func() {
-		initErr = kv.NewMigrationRunner(&SqliteExecutor{pool: s.Pool}, migrationsFS).Migrate(ctx)
+	s.initOnce.Do(func() {
+		s.initErr = kv.NewMigrationRunner(&SqliteExecutor{pool: s.Pool}, migrationsFS).Migrate(ctx)
 	})
-	return initErr
+	return s.initErr
 }
 
 type SQLStatement struct {

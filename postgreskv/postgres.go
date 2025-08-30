@@ -13,8 +13,10 @@ import (
 )
 
 type Postgres struct {
-	Pool *pgxpool.Pool
-	Now  func() time.Time
+	Pool     *pgxpool.Pool
+	Now      func() time.Time
+	initOnce sync.Once
+	initErr  error
 }
 
 type SQLStatement struct {
@@ -36,16 +38,11 @@ func (p *Postgres) SetNow(now func() time.Time) {
 	p.Now = now
 }
 
-var (
-	initOnce sync.Once
-	initErr  error
-)
-
 func (p *Postgres) Init(ctx context.Context) error {
-	initOnce.Do(func() {
-		initErr = kv.NewMigrationRunner(&PostgresExecutor{pool: p.Pool}, migrationsFS).Migrate(ctx)
+	p.initOnce.Do(func() {
+		p.initErr = kv.NewMigrationRunner(&PostgresExecutor{pool: p.Pool}, migrationsFS).Migrate(ctx)
 	})
-	return initErr
+	return p.initErr
 }
 
 func (p *Postgres) queryStream(ctx context.Context, sql string, args pgx.NamedArgs) (records []kv.StreamRecord, err error) {
