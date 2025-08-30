@@ -14,7 +14,14 @@ import (
 // MigrationExecutor defines the interface for executing SQL statements.
 type MigrationExecutor interface {
 	Exec(ctx context.Context, sql string) error
-	QueryIntScalar(ctx context.Context, sql string) (int, error)
+	// GetVersion returns the current migration version from the database.
+	GetVersion(ctx context.Context) (int, error)
+	// SetVersion atomically executes a migration and updates the version in a single transaction.
+	SetVersion(ctx context.Context, migrationSQL string, version int) error
+	// AcquireMigrationLock acquires an exclusive lock for migration operations.
+	AcquireMigrationLock(ctx context.Context) error
+	// ReleaseMigrationLock releases the migration lock.
+	ReleaseMigrationLock(ctx context.Context) error
 }
 
 // MigrationRunner handles database migrations using embedded filesystems.
@@ -50,9 +57,6 @@ func (mr *MigrationRunner) getMigrations() ([]Migration, error) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
 		}
-		if entry.Name() == "get_current_version.sql" {
-			continue
-		}
 		version, name, err := parseMigrationFilename(entry.Name())
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse migration filename %s: %w", entry.Name(), err)
@@ -75,28 +79,16 @@ func (mr *MigrationRunner) getMigrations() ([]Migration, error) {
 	return migrations, nil
 }
 
-// getCurrentVersion returns the current schema version from the database.
-func (mr *MigrationRunner) getCurrentVersion(ctx context.Context) (int, error) {
-	versionQueryBytes, err := fs.ReadFile(mr.migrationsFS, path.Join("migrations", "get_current_version.sql"))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read get_current_version.sql: %w", err)
-	}
-	version, err := mr.executor.QueryIntScalar(ctx, strings.TrimSpace(string(versionQueryBytes)))
-	if err != nil {
-		// If the migration_version table doesn't exist yet, that's expected for a fresh database.
-		// Return 0 to indicate no migrations have been applied.
-		if strings.Contains(err.Error(), "no such table") || strings.Contains(err.Error(), "relation") && strings.Contains(err.Error(), "does not exist") {
-			return 0, nil
-		}
-		// For other errors (connection issues, syntax errors, etc.), propagate them.
-		return 0, fmt.Errorf("failed to query current migration version: %w", err)
-	}
-	return version, nil
-}
-
 // Migrate runs all pending migrations.
 func (mr *MigrationRunner) Migrate(ctx context.Context) error {
-	currentVersion, err := mr.getCurrentVersion(ctx)
+	if err := mr.executor.AcquireMigrationLock(ctx); err != nil {
+		return fmt.Errorf("failed to acquire migration lock: %w", err)
+	}
+	defer func() {
+		_ = mr.executor.ReleaseMigrationLock(ctx)
+	}()
+
+	currentVersion, err := mr.executor.GetVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get current version: %w", err)
 	}
@@ -108,15 +100,14 @@ func (mr *MigrationRunner) Migrate(ctx context.Context) error {
 		if migration.Version <= currentVersion {
 			continue
 		}
-		if err := mr.executor.Exec(ctx, migration.SQL); err != nil {
-			return fmt.Errorf("failed to apply migration %d (%s): %w", migration.Version, migration.Name, err)
-		}
-		if migration.Version <= 1 {
+		if migration.Version == 1 {
+			if err := mr.executor.Exec(ctx, migration.SQL); err != nil {
+				return fmt.Errorf("failed to apply migration %d (%s): %w", migration.Version, migration.Name, err)
+			}
 			continue
 		}
-		updateSQL := fmt.Sprintf("INSERT INTO migration_version (version) VALUES (%d)", migration.Version)
-		if err := mr.executor.Exec(ctx, updateSQL); err != nil {
-			return fmt.Errorf("failed to update migration version for migration %d: %w", migration.Version, err)
+		if err := mr.executor.SetVersion(ctx, migration.SQL, migration.Version); err != nil {
+			return fmt.Errorf("failed to apply migration %d (%s): %w", migration.Version, migration.Name, err)
 		}
 	}
 	return nil
