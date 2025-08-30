@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/a-h/kv"
@@ -34,14 +35,22 @@ func (rq *Rqlite) SetNow(now func() time.Time) {
 	rq.Now = now
 }
 
+var (
+	initOnce sync.Once
+	initErr  error
+)
+
 func (rq *Rqlite) Init(ctx context.Context) error {
-	executor := &RqliteExecutor{
-		client:          rq.Client,
-		timeout:         rq.Timeout,
-		readConsistency: rq.ReadConsistency,
-	}
-	runner := kv.NewMigrationRunner(executor, migrationsFS)
-	return runner.Migrate(ctx)
+	initOnce.Do(func() {
+		executor := &RqliteExecutor{
+			client:          rq.Client,
+			timeout:         rq.Timeout,
+			readConsistency: rq.ReadConsistency,
+		}
+		runner := kv.NewMigrationRunner(executor, migrationsFS)
+		initErr = runner.Migrate(ctx)
+	})
+	return initErr
 }
 
 func (rq *Rqlite) Query(ctx context.Context, stmts rqlitehttp.SQLStatements) (outputs [][]kv.Record, err error) {

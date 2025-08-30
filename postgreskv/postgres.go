@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/a-h/kv"
@@ -35,8 +36,16 @@ func (p *Postgres) SetNow(now func() time.Time) {
 	p.Now = now
 }
 
+var (
+	initOnce sync.Once
+	initErr  error
+)
+
 func (p *Postgres) Init(ctx context.Context) error {
-	return kv.NewMigrationRunner(&PostgresExecutor{pool: p.Pool}, migrationsFS).Migrate(ctx)
+	initOnce.Do(func() {
+		initErr = kv.NewMigrationRunner(&PostgresExecutor{pool: p.Pool}, migrationsFS).Migrate(ctx)
+	})
+	return initErr
 }
 
 func (p *Postgres) queryStream(ctx context.Context, sql string, args pgx.NamedArgs) (records []kv.StreamRecord, err error) {

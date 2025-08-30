@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/a-h/kv"
@@ -30,8 +31,16 @@ func (s *Sqlite) SetNow(now func() time.Time) {
 	s.Now = now
 }
 
+var (
+	initOnce sync.Once
+	initErr  error
+)
+
 func (s *Sqlite) Init(ctx context.Context) error {
-	return kv.NewMigrationRunner(&SqliteExecutor{pool: s.Pool}, migrationsFS).Migrate(ctx)
+	initOnce.Do(func() {
+		initErr = kv.NewMigrationRunner(&SqliteExecutor{pool: s.Pool}, migrationsFS).Migrate(ctx)
+	})
+	return initErr
 }
 
 type SQLStatement struct {
