@@ -100,6 +100,8 @@
         pkgs.crane
         pkgs.gh
         pkgs.git
+        # To visualize graph output.
+        pkgs.graphviz
         # Go tooling.
         pkgs.go
         pkgs.gopls
