@@ -13,6 +13,8 @@ import (
 	"zombiezen.com/go/sqlite/sqlitex"
 )
 
+const getBatchMaxKeyCount = 256
+
 func NewStore(pool *sqlitex.Pool) *Store {
 	return &Store{
 		Sqlite: newPool(pool),
@@ -38,6 +40,50 @@ func (s *Store) Get(ctx context.Context, key string, v any) (r kv.Record, ok boo
 	r = records[0]
 	err = json.Unmarshal(r.Value, v)
 	return r, true, err
+}
+
+func (s *Store) GetBatch(ctx context.Context, keys ...string) (items map[string]kv.Record, err error) {
+	if len(keys) == 0 {
+		return map[string]kv.Record{}, nil
+	}
+
+	items = make(map[string]kv.Record)
+
+	// Process keys in chunks to avoid hitting database limits.
+	for i := 0; i < len(keys); i += getBatchMaxKeyCount {
+		end := min(i+getBatchMaxKeyCount, len(keys))
+		chunk := keys[i:end]
+
+		// Use JSON array approach to pass keys to SQLite.
+		keysJSON, err := json.Marshal(chunk)
+		if err != nil {
+			return nil, fmt.Errorf("getbatch: failed to marshal keys: %w", err)
+		}
+
+		sql := `
+		with batch_keys(key) as (
+			select json_each.value as key 
+			from json_each(:keys)
+		)
+		select kv.key, kv.version, json(kv.value) as value, kv.type, kv.created 
+		from kv 
+		inner join batch_keys on kv.key = batch_keys.key;`
+
+		args := map[string]any{
+			":keys": string(keysJSON),
+		}
+
+		records, err := s.Query(ctx, sql, args)
+		if err != nil {
+			return nil, fmt.Errorf("getbatch: %w", err)
+		}
+
+		for _, record := range records {
+			items[record.Key] = record
+		}
+	}
+
+	return items, nil
 }
 
 func (s *Store) GetPrefix(ctx context.Context, prefix string, offset, limit int) (records []kv.Record, err error) {

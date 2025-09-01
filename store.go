@@ -185,6 +185,10 @@ type Store interface {
 	Init(ctx context.Context) error
 	// Get gets a key from the store, and populates v with the value. If the key does not exist, it returns ok=false.
 	Get(ctx context.Context, key string, v any) (r Record, ok bool, err error)
+	// GetBatch gets multiple keys from the store and returns a map of key to Record.
+	// Keys that don't exist will not be included in the returned map.
+	// The operation chunks requests internally to avoid database limits.
+	GetBatch(ctx context.Context, keys ...string) (items map[string]Record, err error)
 	// GetPrefix gets all keys with a given prefix from the store.
 	GetPrefix(ctx context.Context, prefix string, offset, limit int) (rows []Record, err error)
 	// GetRange gets all keys between the key from (inclusive) and to (exclusive).

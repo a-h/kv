@@ -10,6 +10,8 @@ import (
 	rqlitehttp "github.com/rqlite/rqlite-go-http"
 )
 
+const getBatchMaxKeyCount = 200
+
 func NewStore(client *rqlitehttp.Client) *Store {
 	return &Store{
 		Rqlite: New(client),
@@ -43,6 +45,48 @@ func (s *Store) Get(ctx context.Context, key string, v any) (r kv.Record, ok boo
 	r = rows[0]
 	err = json.Unmarshal(r.Value, v)
 	return r, true, err
+}
+
+func (s *Store) GetBatch(ctx context.Context, keys ...string) (items map[string]kv.Record, err error) {
+	if len(keys) == 0 {
+		return map[string]kv.Record{}, nil
+	}
+
+	items = make(map[string]kv.Record)
+
+	// Process keys in chunks to avoid hitting database limits.
+	for i := 0; i < len(keys); i += getBatchMaxKeyCount {
+		end := min(i+getBatchMaxKeyCount, len(keys))
+		chunk := keys[i:end]
+
+		// Use JSON array approach with json_each to avoid string concatenation.
+		keysJSON, err := json.Marshal(chunk)
+		if err != nil {
+			return nil, fmt.Errorf("getbatch: failed to marshal keys: %w", err)
+		}
+
+		stmts := rqlitehttp.SQLStatements{
+			{
+				SQL: `select kv.key, kv.version, json(kv.value) as value, kv.type, kv.created 
+				      from kv 
+				      where kv.key in (select value from json_each(:keys));`,
+				NamedParams: map[string]any{
+					"keys": string(keysJSON),
+				},
+			},
+		}
+
+		outputs, err := s.Query(ctx, stmts)
+		if err != nil {
+			return nil, fmt.Errorf("getbatch: %w", err)
+		}
+
+		for _, record := range outputs[0] {
+			items[record.Key] = record
+		}
+	}
+
+	return items, nil
 }
 
 func (s *Store) GetPrefix(ctx context.Context, prefix string, offset, limit int) (rows []kv.Record, err error) {

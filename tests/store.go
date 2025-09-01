@@ -101,6 +101,7 @@ func Run(t *testing.T, store kv.Store, scheduler kv.Scheduler) {
 
 	// Store tests.
 	t.Run("Get", newGetTest(ctx, store))
+	t.Run("GetBatch", newGetBatchTest(ctx, store))
 	t.Run("GetPrefix", newGetPrefixTest(ctx, store))
 	t.Run("GetRange", newGetRangeTest(ctx, store))
 	t.Run("List", newListTest(ctx, store))

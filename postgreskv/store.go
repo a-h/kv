@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const getBatchMaxKeyCount = 1000
+
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{
 		Postgres: New(pool),
@@ -43,6 +45,35 @@ func (s *Store) Get(ctx context.Context, key string, v any) (r kv.Record, ok boo
 	}
 	err = json.Unmarshal(r.Value, v)
 	return r, ok, err
+}
+
+func (s *Store) GetBatch(ctx context.Context, keys ...string) (items map[string]kv.Record, err error) {
+	if len(keys) == 0 {
+		return map[string]kv.Record{}, nil
+	}
+
+	items = make(map[string]kv.Record)
+
+	// Process keys in chunks to avoid hitting database limits.
+	for i := 0; i < len(keys); i += getBatchMaxKeyCount {
+		end := min(i+getBatchMaxKeyCount, len(keys))
+		chunk := keys[i:end]
+
+		// Use array parameter with ANY to match keys efficiently.
+		sql := `select key, version, value, type, created from kv where key = any(@keys);`
+		args := pgx.NamedArgs{"keys": chunk}
+
+		records, err := s.query(ctx, sql, args)
+		if err != nil {
+			return nil, fmt.Errorf("getbatch: %w", err)
+		}
+
+		for _, record := range records {
+			items[record.Key] = record
+		}
+	}
+
+	return items, nil
 }
 
 func (s *Store) GetPrefix(ctx context.Context, prefix string, offset, limit int) ([]kv.Record, error) {
