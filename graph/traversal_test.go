@@ -383,9 +383,12 @@ func TestGraphQueries(t *testing.T) {
 
 	t.Run("Find products in same category", func(t *testing.T) {
 		// Find what category laptop is in.
-		laptopCategories, err := g.GetOutgoingEdges(ctx, "Product", "laptop", "in_category")
-		if err != nil {
-			t.Fatalf("failed to get laptop categories: %v", err)
+		var laptopCategories []graph.Edge
+		for edge, err := range g.GetOutgoing(ctx, "Product", "laptop", "in_category") {
+			if err != nil {
+				t.Fatalf("failed to get laptop categories: %v", err)
+			}
+			laptopCategories = append(laptopCategories, edge)
 		}
 
 		if len(laptopCategories) != 1 {
@@ -395,9 +398,12 @@ func TestGraphQueries(t *testing.T) {
 		category := laptopCategories[0].ToEntityID
 
 		// Find all products in the same category.
-		categoryProducts, err := g.GetIncomingEdges(ctx, "Category", category, "in_category")
-		if err != nil {
-			t.Fatalf("failed to get products in category: %v", err)
+		var categoryProducts []graph.Edge
+		for edge, err := range g.GetIncoming(ctx, "Category", category, "in_category") {
+			if err != nil {
+				t.Fatalf("failed to get products in category: %v", err)
+			}
+			categoryProducts = append(categoryProducts, edge)
 		}
 
 		// Should find laptop and monitor (both in computers category).
@@ -417,18 +423,24 @@ func TestGraphQueries(t *testing.T) {
 
 	t.Run("Find similar users", func(t *testing.T) {
 		// Find users who bought the same product as user1.
-		user1Purchases, err := g.GetOutgoingEdges(ctx, "User", "user1", "bought")
-		if err != nil {
-			t.Fatalf("failed to get user1 purchases: %v", err)
+		var user1Purchases []graph.Edge
+		for edge, err := range g.GetOutgoing(ctx, "User", "user1", "bought") {
+			if err != nil {
+				t.Fatalf("failed to get user1 purchases: %v", err)
+			}
+			user1Purchases = append(user1Purchases, edge)
 		}
 
 		similarUsers := make(map[string]int) // userID -> number of common products
 
 		for _, purchase := range user1Purchases {
 			// Find who else bought this product.
-			otherBuyers, err := g.GetIncomingEdges(ctx, "Product", purchase.ToEntityID, "bought")
-			if err != nil {
-				t.Fatalf("failed to get other buyers: %v", err)
+			var otherBuyers []graph.Edge
+			for edge, err := range g.GetIncoming(ctx, "Product", purchase.ToEntityID, "bought") {
+				if err != nil {
+					t.Fatalf("failed to get other buyers: %v", err)
+				}
+				otherBuyers = append(otherBuyers, edge)
 			}
 
 			for _, buyer := range otherBuyers {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/a-h/kv/graph"
 )
@@ -29,6 +28,10 @@ type GraphAddEdgeCommand struct {
 }
 
 func (c *GraphAddEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
+	if c.FromType == "" || c.FromID == "" || c.EdgeType == "" || c.ToType == "" || c.ToID == "" {
+		return fmt.Errorf("all edge components are required")
+	}
+
 	store, err := g.Store()
 	if err != nil {
 		return fmt.Errorf("failed to create store: %w", err)
@@ -82,8 +85,7 @@ func (c *GraphGetEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 	}
 
 	if !exists {
-		fmt.Println("Edge not found")
-		os.Exit(1)
+		return fmt.Errorf("edge not found")
 	}
 
 	output, err := json.MarshalIndent(edge, "", "  ")
@@ -127,8 +129,7 @@ func (c *GraphGetOutgoingCommand) Run(ctx context.Context, g GlobalFlags) error 
 	}
 
 	if len(edges) == 0 {
-		fmt.Println("No outgoing edges found")
-		return nil
+		return fmt.Errorf("no outgoing edges found")
 	}
 
 	for _, edge := range edges {
@@ -174,8 +175,7 @@ func (c *GraphGetIncomingCommand) Run(ctx context.Context, g GlobalFlags) error 
 	}
 
 	if len(edges) == 0 {
-		fmt.Println("No incoming edges found")
-		return nil
+		return fmt.Errorf("no incoming edges found")
 	}
 
 	for _, edge := range edges {
@@ -244,8 +244,7 @@ func (c *GraphFindPathCommand) Run(ctx context.Context, g GlobalFlags) error {
 	}
 
 	if path == nil {
-		fmt.Println("No path found")
-		return nil
+		return fmt.Errorf("no path found")
 	}
 
 	fmt.Printf("Shortest path (depth %d):\n", path.Depth)
@@ -368,28 +367,31 @@ func (c *GraphViewCommand) outputMermaid(ctx context.Context, gr *graph.Graph) e
 
 func (c *GraphViewCommand) collectEdges(ctx context.Context, gr *graph.Graph) ([]graph.Edge, error) {
 	var allEdges []graph.Edge
+	const maxEdges = 10000 // Prevent memory issues
 
 	if c.EntityType == "*" {
 		// Get all edges in the graph by scanning all graph keys.
-		var items []graph.Edge
+		var edgeCount int
 		for edge, err := range gr.All(ctx) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to list all edges: %w", err)
 			}
-			items = append(items, edge)
+			if edgeCount >= maxEdges {
+				return nil, fmt.Errorf("too many edges (%d+) for visualization - please filter by entity type", maxEdges)
+			}
+			allEdges = append(allEdges, edge)
+			edgeCount++
 		}
 
 		// Apply edge type filter if specified.
 		if c.EdgeType != "*" {
 			var filtered []graph.Edge
-			for _, edge := range items {
+			for _, edge := range allEdges {
 				if edge.Type == c.EdgeType {
 					filtered = append(filtered, edge)
 				}
 			}
 			allEdges = filtered
-		} else {
-			allEdges = items
 		}
 	} else {
 		if c.EntityID == "" || c.EntityID == "*" {

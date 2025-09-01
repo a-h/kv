@@ -28,6 +28,16 @@ type NodeRef struct {
 
 // BreadthFirstSearch performs BFS traversal from a starting node.
 func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEntityID string, opts TraversalOptions) ([]Path, error) {
+	if startEntityType == "" || startEntityID == "" {
+		return nil, fmt.Errorf("start entity type and ID cannot be empty")
+	}
+	if opts.MaxDepth < 0 {
+		return nil, fmt.Errorf("max depth cannot be negative")
+	}
+	if opts.VisitLimit < 0 {
+		return nil, fmt.Errorf("visit limit cannot be negative")
+	}
+
 	var paths []Path
 	visited := make(map[string]bool)
 	queue := []Path{{
@@ -37,8 +47,13 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 	}}
 
 	visited[nodeKey(startEntityType, startEntityID)] = true
+	nodesVisited := 1 // Track for observability
 
 	for len(queue) > 0 && (opts.VisitLimit == 0 || len(paths) < opts.VisitLimit) {
+		// Check for runaway traversals.
+		if nodesVisited > g.MaxTraversalNodes {
+			return nil, fmt.Errorf("traversal exceeded maximum nodes (%d) - consider using MaxDepth or VisitLimit", g.MaxTraversalNodes)
+		}
 		currentPath := queue[0]
 		queue = queue[1:]
 
@@ -80,6 +95,7 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 			neighborKey := nodeKey(edge.ToEntityType, edge.ToEntityID)
 			if !visited[neighborKey] {
 				visited[neighborKey] = true
+				nodesVisited++
 
 				newPath := Path{
 					Nodes: append(currentPath.Nodes, NodeRef{
@@ -100,6 +116,13 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 
 // FindShortestPath finds the shortest path between two nodes using BFS.
 func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntityID, toEntityType, toEntityID string, opts TraversalOptions) (*Path, error) {
+	if fromEntityType == "" || fromEntityID == "" || toEntityType == "" || toEntityID == "" {
+		return nil, fmt.Errorf("entity types and IDs cannot be empty")
+	}
+	if opts.MaxDepth < 0 {
+		return nil, fmt.Errorf("max depth cannot be negative")
+	}
+
 	targetKey := nodeKey(toEntityType, toEntityID)
 	visited := make(map[string]bool)
 	queue := []Path{{
@@ -109,8 +132,14 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 	}}
 
 	visited[nodeKey(fromEntityType, fromEntityID)] = true
+	nodesVisited := 1 // Track for observability
 
 	for len(queue) > 0 {
+		// Check for runaway traversals.
+		if nodesVisited > g.MaxTraversalNodes {
+			return nil, fmt.Errorf("traversal exceeded maximum nodes (%d) - consider using MaxDepth", g.MaxTraversalNodes)
+		}
+
 		currentPath := queue[0]
 		queue = queue[1:]
 
@@ -156,6 +185,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 			neighborKey := nodeKey(edge.ToEntityType, edge.ToEntityID)
 			if !visited[neighborKey] {
 				visited[neighborKey] = true
+				nodesVisited++
 
 				newPath := Path{
 					Nodes: append(currentPath.Nodes, NodeRef{

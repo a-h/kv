@@ -28,29 +28,56 @@ type EdgeRef struct {
 }
 
 // Graph provides graph operations on top of a KV store.
+// This struct is safe for concurrent use as it only wraps the underlying store and paginator.
 type Graph struct {
 	store     kv.Store
 	paginator *kv.Paginator
+	// Maximum nodes to visit during traversal (prevents runaway operations).
+	MaxTraversalNodes int
 }
 
 // New creates a new graph instance.
 func New(store kv.Store) *Graph {
 	return &Graph{
-		store:     store,
-		paginator: kv.NewPaginator(store, 1000), // Default batch size of 1000
+		store:             store,
+		paginator:         kv.NewPaginator(store, 1000), // Default batch size of 1000
+		MaxTraversalNodes: 100000,                       // Default max traversal nodes
 	}
 }
 
 // NewWithBatchSize creates a new graph instance with a custom batch size for pagination.
 func NewWithBatchSize(store kv.Store, batchSize int) *Graph {
+	if batchSize <= 0 {
+		batchSize = 1000
+	}
 	return &Graph{
-		store:     store,
-		paginator: kv.NewPaginator(store, batchSize),
+		store:             store,
+		paginator:         kv.NewPaginator(store, batchSize),
+		MaxTraversalNodes: 100000,
+	}
+}
+
+// NewWithConfig creates a new graph instance with custom configuration.
+func NewWithConfig(store kv.Store, batchSize, maxTraversalNodes int) *Graph {
+	if batchSize <= 0 {
+		batchSize = 1000
+	}
+	if maxTraversalNodes <= 0 {
+		maxTraversalNodes = 100000
+	}
+	return &Graph{
+		store:             store,
+		paginator:         kv.NewPaginator(store, batchSize),
+		MaxTraversalNodes: maxTraversalNodes,
 	}
 }
 
 // AddEdge creates a directed edge from one entity to another.
 func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
+	if edge.FromEntityType == "" || edge.FromEntityID == "" || edge.ToEntityType == "" || edge.ToEntityID == "" || edge.Type == "" {
+		return fmt.Errorf("edge fields cannot be empty")
+	}
+
 	// Store the edge itself.
 	edgeKey := edgeKey(edge.FromEntityType, edge.FromEntityID, edge.Type, edge.ToEntityType, edge.ToEntityID)
 
@@ -233,8 +260,8 @@ func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string)
 	return func(yield func(Edge, error) bool) {
 		prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
 
-		// Group records by edge type to avoid duplicate processing.
-		edgeTypes := make(map[string]bool)
+		// Use paginator to stream edge references in batches without grouping by type.
+		var edgeKeys []string
 
 		for record, err := range g.paginator.GetPrefix(ctx, prefix) {
 			if err != nil {
@@ -248,30 +275,30 @@ func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string)
 				return
 			}
 
+			var edgeRef EdgeRef
+			if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
+				continue // Skip malformed references
+			}
+
+			// Extract edge type from the key.
 			edgeType := extractEdgeTypeFromKey(record.Key)
-			if edgeType != "" {
-				edgeTypes[edgeType] = true
+
+			// Build the edge key for batch retrieval.
+			edgeKey := edgeKey(entityType, entityID, edgeType, edgeRef.EntityType, edgeRef.EntityID)
+			edgeKeys = append(edgeKeys, edgeKey)
+
+			// Process batch when we reach the paginator limit.
+			if len(edgeKeys) >= g.paginator.Limit {
+				if !g.processBatchedEdges(ctx, edgeKeys, yield) {
+					return
+				}
+				edgeKeys = edgeKeys[:0]
 			}
 		}
 
-		for edgeType := range edgeTypes {
-			// Check context cancellation.
-			if err := ctx.Err(); err != nil {
-				yield(Edge{}, err)
-				return
-			}
-
-			for edge, err := range g.GetOutgoing(ctx, entityType, entityID, edgeType) {
-				if err != nil {
-					if !yield(Edge{}, err) {
-						return
-					}
-					continue
-				}
-				if !yield(edge, nil) {
-					return
-				}
-			}
+		// Process remaining edges.
+		if len(edgeKeys) > 0 {
+			g.processBatchedEdges(ctx, edgeKeys, yield)
 		}
 	}
 }
@@ -281,8 +308,8 @@ func (g *Graph) GetAllIncoming(ctx context.Context, entityType, entityID string)
 	return func(yield func(Edge, error) bool) {
 		prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
 
-		// Group records by edge type to avoid duplicate processing.
-		edgeTypes := make(map[string]bool)
+		// Use paginator to stream edge references in batches without grouping by type.
+		var edgeKeys []string
 
 		for record, err := range g.paginator.GetPrefix(ctx, prefix) {
 			if err != nil {
@@ -296,30 +323,30 @@ func (g *Graph) GetAllIncoming(ctx context.Context, entityType, entityID string)
 				return
 			}
 
+			var edgeRef EdgeRef
+			if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
+				continue // Skip malformed references
+			}
+
+			// Extract edge type from the key.
 			edgeType := extractEdgeTypeFromKey(record.Key)
-			if edgeType != "" {
-				edgeTypes[edgeType] = true
+
+			// Build the edge key for batch retrieval.
+			edgeKey := edgeKey(edgeRef.EntityType, edgeRef.EntityID, edgeType, entityType, entityID)
+			edgeKeys = append(edgeKeys, edgeKey)
+
+			// Process batch when we reach the paginator limit.
+			if len(edgeKeys) >= g.paginator.Limit {
+				if !g.processBatchedEdges(ctx, edgeKeys, yield) {
+					return
+				}
+				edgeKeys = edgeKeys[:0]
 			}
 		}
 
-		for edgeType := range edgeTypes {
-			// Check context cancellation.
-			if err := ctx.Err(); err != nil {
-				yield(Edge{}, err)
-				return
-			}
-
-			for edge, err := range g.GetIncoming(ctx, entityType, entityID, edgeType) {
-				if err != nil {
-					if !yield(Edge{}, err) {
-						return
-					}
-					continue
-				}
-				if !yield(edge, nil) {
-					return
-				}
-			}
+		// Process remaining edges.
+		if len(edgeKeys) > 0 {
+			g.processBatchedEdges(ctx, edgeKeys, yield)
 		}
 	}
 }
