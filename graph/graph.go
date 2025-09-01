@@ -98,8 +98,7 @@ func (g *Graph) GetEdge(ctx context.Context, fromEntityType, fromEntityID, edgeT
 }
 
 // GetOutgoingEdges returns all outgoing edges of a specific type from an entity.
-func (g *Graph) GetOutgoingEdges(ctx context.Context, entityType, entityID, edgeType string) ([]Edge, error) {
-	var edges []Edge
+func (g *Graph) GetOutgoingEdges(ctx context.Context, entityType, entityID, edgeType string) (edges []Edge, err error) {
 	for edge, err := range g.StreamOutgoingEdges(ctx, entityType, entityID, edgeType) {
 		if err != nil {
 			return nil, err
@@ -110,8 +109,7 @@ func (g *Graph) GetOutgoingEdges(ctx context.Context, entityType, entityID, edge
 }
 
 // GetIncomingEdges returns all incoming edges of a specific type to an entity.
-func (g *Graph) GetIncomingEdges(ctx context.Context, entityType, entityID, edgeType string) ([]Edge, error) {
-	var edges []Edge
+func (g *Graph) GetIncomingEdges(ctx context.Context, entityType, entityID, edgeType string) (edges []Edge, err error) {
 	for edge, err := range g.StreamIncomingEdges(ctx, entityType, entityID, edgeType) {
 		if err != nil {
 			return nil, err
@@ -122,8 +120,7 @@ func (g *Graph) GetIncomingEdges(ctx context.Context, entityType, entityID, edge
 }
 
 // GetAllOutgoingEdges returns all outgoing edges from an entity (all types).
-func (g *Graph) GetAllOutgoingEdges(ctx context.Context, entityType, entityID string) ([]Edge, error) {
-	var allEdges []Edge
+func (g *Graph) GetAllOutgoingEdges(ctx context.Context, entityType, entityID string) (allEdges []Edge, err error) {
 	for edge, err := range g.StreamAllOutgoingEdges(ctx, entityType, entityID) {
 		if err != nil {
 			return nil, err
@@ -134,8 +131,7 @@ func (g *Graph) GetAllOutgoingEdges(ctx context.Context, entityType, entityID st
 }
 
 // GetAllIncomingEdges returns all incoming edges to an entity (all types).
-func (g *Graph) GetAllIncomingEdges(ctx context.Context, entityType, entityID string) ([]Edge, error) {
-	var allEdges []Edge
+func (g *Graph) GetAllIncomingEdges(ctx context.Context, entityType, entityID string) (allEdges []Edge, err error) {
 	for edge, err := range g.StreamAllIncomingEdges(ctx, entityType, entityID) {
 		if err != nil {
 			return nil, err
