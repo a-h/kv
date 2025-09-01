@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/a-h/kv"
 	"github.com/a-h/kv/graph"
@@ -131,20 +132,20 @@ func main() {
 		{
 			FromEntityType: "Player", FromEntityID: "player1",
 			ToEntityType: "Player", ToEntityID: "player2",
-			Type: "friends_with",
+			Type:       "friends_with",
 			Properties: map[string]any{"since": "2024-01-01"},
 		},
 		{
 			FromEntityType: "Player", FromEntityID: "player2",
 			ToEntityType: "Player", ToEntityID: "player1",
-			Type: "friends_with",
+			Type:       "friends_with",
 			Properties: map[string]any{"since": "2024-01-01"},
 		},
 		// Rivalries.
 		{
 			FromEntityType: "Player", FromEntityID: "player1",
 			ToEntityType: "Player", ToEntityID: "player3",
-			Type: "rival_of",
+			Type:       "rival_of",
 			Properties: map[string]any{"intensity": 7},
 		},
 	}
@@ -261,7 +262,7 @@ func main() {
 	fmt.Println("\n4. Combat effectiveness (Health + Weapon + Team bonus):")
 	for _, player := range players {
 		playerID := player.ID
-		
+
 		var health Health
 		var weapon Weapon
 		var effectiveness int
@@ -286,7 +287,7 @@ func main() {
 					if err == nil {
 						teamBonus := len(teamMembers) * 5 // 5 points per team member
 						effectiveness += teamBonus
-						fmt.Printf("  %s: Base: %d, Team bonus: %d, Total: %d\n", 
+						fmt.Printf("  %s: Base: %d, Team bonus: %d, Total: %d\n",
 							player.Name, effectiveness-teamBonus, teamBonus, effectiveness)
 						break
 					}
@@ -295,12 +296,16 @@ func main() {
 		}
 
 		if len(playerTeams) == 0 {
-			fmt.Printf("  %s: Base: %d, Team bonus: 0, Total: %d (no team)\n", 
+			fmt.Printf("  %s: Base: %d, Team bonus: 0, Total: %d (no team)\n",
 				player.Name, effectiveness, effectiveness)
 		}
 	}
 
 	fmt.Println("\n=== Example Complete ===")
+
+	// Demonstrate streaming functionality.
+	fmt.Println("\n" + strings.Repeat("=", 50))
+	StreamingDemo()
 }
 
 func abs(x int) int {

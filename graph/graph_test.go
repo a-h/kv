@@ -2,6 +2,7 @@ package graph_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/a-h/kv/graph"
@@ -67,12 +68,12 @@ func TestGraph(t *testing.T) {
 		followEdge := graph.Edge{
 			FromEntityType: "User",
 			FromEntityID:   "user1",
-			ToEntityType:   "User", 
+			ToEntityType:   "User",
 			ToEntityID:     "user2",
 			Type:           "follows",
 			Properties:     map[string]any{"since": "2024-01-01"},
 		}
-		
+
 		if err := g.AddEdge(ctx, followEdge); err != nil {
 			t.Fatalf("failed to add follow edge: %v", err)
 		}
@@ -85,7 +86,7 @@ func TestGraph(t *testing.T) {
 			ToEntityID:     "post1",
 			Type:           "authored",
 		}
-		
+
 		if err := g.AddEdge(ctx, authorEdge); err != nil {
 			t.Fatalf("failed to add author edge: %v", err)
 		}
@@ -98,7 +99,7 @@ func TestGraph(t *testing.T) {
 			ToEntityID:     "comment1",
 			Type:           "authored",
 		}
-		
+
 		if err := g.AddEdge(ctx, commentedEdge); err != nil {
 			t.Fatalf("failed to add commented edge: %v", err)
 		}
@@ -111,7 +112,7 @@ func TestGraph(t *testing.T) {
 			ToEntityID:     "post1",
 			Type:           "on",
 		}
-		
+
 		if err := g.AddEdge(ctx, commentOnPostEdge); err != nil {
 			t.Fatalf("failed to add comment-on-post edge: %v", err)
 		}
@@ -322,6 +323,218 @@ func TestGraphTraversal(t *testing.T) {
 
 		if followers[0].FromEntityID != "diana" {
 			t.Fatalf("expected Diana to follow Alice, got %s", followers[0].FromEntityID)
+		}
+	})
+}
+
+func TestStreamingMethods(t *testing.T) {
+	ctx := context.Background()
+
+	pool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	store := sqlitekv.NewStore(pool)
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	g := graph.New(store)
+
+	// Create test edges.
+	edges := []graph.Edge{
+		{
+			FromEntityType: "User",
+			FromEntityID:   "alice",
+			ToEntityType:   "User",
+			ToEntityID:     "bob",
+			Type:           "follows",
+			Properties:     map[string]any{"since": "2024-01-01"},
+		},
+		{
+			FromEntityType: "User",
+			FromEntityID:   "alice",
+			ToEntityType:   "Post",
+			ToEntityID:     "post1",
+			Type:           "authored",
+		},
+		{
+			FromEntityType: "User",
+			FromEntityID:   "bob",
+			ToEntityType:   "User",
+			ToEntityID:     "alice",
+			Type:           "follows",
+		},
+		{
+			FromEntityType: "User",
+			FromEntityID:   "bob",
+			ToEntityType:   "Post",
+			ToEntityID:     "post2",
+			Type:           "authored",
+		},
+	}
+
+	for _, edge := range edges {
+		if err := g.AddEdge(ctx, edge); err != nil {
+			t.Fatalf("failed to add edge: %v", err)
+		}
+	}
+
+	t.Run("StreamOutgoingEdges specific type", func(t *testing.T) {
+		var collectedEdges []graph.Edge
+		var collectedErrors []error
+
+		for edge, err := range g.StreamOutgoingEdges(ctx, "User", "alice", "follows") {
+			if err != nil {
+				collectedErrors = append(collectedErrors, err)
+				continue
+			}
+			collectedEdges = append(collectedEdges, edge)
+		}
+
+		if len(collectedErrors) > 0 {
+			t.Fatalf("unexpected errors: %v", collectedErrors)
+		}
+
+		if len(collectedEdges) != 1 {
+			t.Fatalf("expected 1 follow edge, got %d", len(collectedEdges))
+		}
+
+		if collectedEdges[0].ToEntityID != "bob" {
+			t.Fatalf("expected edge to bob, got %s", collectedEdges[0].ToEntityID)
+		}
+	})
+
+	t.Run("StreamIncomingEdges specific type", func(t *testing.T) {
+		var collectedEdges []graph.Edge
+		var collectedErrors []error
+
+		for edge, err := range g.StreamIncomingEdges(ctx, "User", "alice", "follows") {
+			if err != nil {
+				collectedErrors = append(collectedErrors, err)
+				continue
+			}
+			collectedEdges = append(collectedEdges, edge)
+		}
+
+		if len(collectedErrors) > 0 {
+			t.Fatalf("unexpected errors: %v", collectedErrors)
+		}
+
+		if len(collectedEdges) != 1 {
+			t.Fatalf("expected 1 incoming follow edge, got %d", len(collectedEdges))
+		}
+
+		if collectedEdges[0].FromEntityID != "bob" {
+			t.Fatalf("expected edge from bob, got %s", collectedEdges[0].FromEntityID)
+		}
+	})
+
+	t.Run("StreamAllOutgoingEdges", func(t *testing.T) {
+		var collectedEdges []graph.Edge
+		var collectedErrors []error
+
+		for edge, err := range g.StreamAllOutgoingEdges(ctx, "User", "alice") {
+			if err != nil {
+				collectedErrors = append(collectedErrors, err)
+				continue
+			}
+			collectedEdges = append(collectedEdges, edge)
+		}
+
+		if len(collectedErrors) > 0 {
+			t.Fatalf("unexpected errors: %v", collectedErrors)
+		}
+
+		if len(collectedEdges) != 2 {
+			t.Fatalf("expected 2 outgoing edges from alice, got %d", len(collectedEdges))
+		}
+
+		// Check that we have one follow and one authored edge.
+		followCount := 0
+		authoredCount := 0
+		for _, edge := range collectedEdges {
+			switch edge.Type {
+			case "follows":
+				followCount++
+			case "authored":
+				authoredCount++
+			}
+		}
+
+		if followCount != 1 || authoredCount != 1 {
+			t.Fatalf("expected 1 follow and 1 authored edge, got %d follows, %d authored", followCount, authoredCount)
+		}
+	})
+
+	t.Run("StreamAllIncomingEdges", func(t *testing.T) {
+		var collectedEdges []graph.Edge
+		var collectedErrors []error
+
+		for edge, err := range g.StreamAllIncomingEdges(ctx, "User", "alice") {
+			if err != nil {
+				collectedErrors = append(collectedErrors, err)
+				continue
+			}
+			collectedEdges = append(collectedEdges, edge)
+		}
+
+		if len(collectedErrors) > 0 {
+			t.Fatalf("unexpected errors: %v", collectedErrors)
+		}
+
+		if len(collectedEdges) != 1 {
+			t.Fatalf("expected 1 incoming edge to alice, got %d", len(collectedEdges))
+		}
+
+		if collectedEdges[0].Type != "follows" {
+			t.Fatalf("expected follow edge, got %s", collectedEdges[0].Type)
+		}
+	})
+
+	t.Run("StreamAllEdges", func(t *testing.T) {
+		var collectedEdges []graph.Edge
+		var collectedErrors []error
+
+		for edge, err := range g.StreamAllEdges(ctx) {
+			if err != nil {
+				collectedErrors = append(collectedErrors, err)
+				continue
+			}
+			collectedEdges = append(collectedEdges, edge)
+		}
+
+		if len(collectedErrors) > 0 {
+			t.Fatalf("unexpected errors: %v", collectedErrors)
+		}
+
+		if len(collectedEdges) != 4 {
+			t.Fatalf("expected 4 total edges, got %d", len(collectedEdges))
+		}
+	})
+
+	t.Run("Streaming with context cancellation", func(t *testing.T) {
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel() // Cancel immediately.
+
+		var collectedErrors []error
+		for _, err := range g.StreamOutgoingEdges(cancelCtx, "User", "alice", "follows") {
+			if err != nil {
+				collectedErrors = append(collectedErrors, err)
+				break // Exit on first error.
+			}
+		}
+
+		if len(collectedErrors) == 0 {
+			t.Fatal("expected context cancellation error")
+		}
+
+		// The error could be context.Canceled directly or wrapped by the underlying store.
+		errStr := collectedErrors[0].Error()
+		if collectedErrors[0] != context.Canceled && !strings.Contains(errStr, "context canceled") && !strings.Contains(errStr, "interrupted") {
+			t.Fatalf("expected context cancellation error, got %v", collectedErrors[0])
 		}
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"strings"
 
 	"github.com/a-h/kv"
@@ -98,128 +99,266 @@ func (g *Graph) GetEdge(ctx context.Context, fromEntityType, fromEntityID, edgeT
 
 // GetOutgoingEdges returns all outgoing edges of a specific type from an entity.
 func (g *Graph) GetOutgoingEdges(ctx context.Context, entityType, entityID, edgeType string) ([]Edge, error) {
-	var prefix string
-	if edgeType == "*" {
-		// Get all outgoing edges regardless of type.
-		prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
-	} else {
-		// Get edges of specific type.
-		prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/%s/", entityType, entityID, edgeType)
-	}
-
-	records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
-	if err != nil {
-		return nil, err
-	}
-
 	var edges []Edge
-	for _, record := range records {
-		var edgeRef EdgeRef
-		if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
-			continue // Skip malformed references
-		}
-
-		// Extract edge type from the key if we're in wildcard mode.
-		actualEdgeType := edgeType
-		if edgeType == "*" {
-			actualEdgeType = extractEdgeTypeFromKey(record.Key)
-		}
-
-		// Get the full edge.
-		edge, exists, err := g.GetEdge(ctx, entityType, entityID, actualEdgeType, edgeRef.EntityType, edgeRef.EntityID)
+	for edge, err := range g.StreamOutgoingEdges(ctx, entityType, entityID, edgeType) {
 		if err != nil {
 			return nil, err
 		}
-		if exists {
-			edges = append(edges, edge)
-		}
+		edges = append(edges, edge)
 	}
-
 	return edges, nil
 }
 
 // GetIncomingEdges returns all incoming edges of a specific type to an entity.
 func (g *Graph) GetIncomingEdges(ctx context.Context, entityType, entityID, edgeType string) ([]Edge, error) {
-	var prefix string
-	if edgeType == "*" {
-		// Get all incoming edges regardless of type.
-		prefix = fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
-	} else {
-		// Get edges of specific type.
-		prefix = fmt.Sprintf("graph/node/%s/%s/incoming/%s/", entityType, entityID, edgeType)
-	}
-
-	records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
-	if err != nil {
-		return nil, err
-	}
-
 	var edges []Edge
-	for _, record := range records {
-		var edgeRef EdgeRef
-		if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
-			continue // Skip malformed references
-		}
-
-		// Extract edge type from the key if we're in wildcard mode.
-		actualEdgeType := edgeType
-		if edgeType == "*" {
-			actualEdgeType = extractEdgeTypeFromKey(record.Key)
-		}
-
-		// Get the full edge.
-		edge, exists, err := g.GetEdge(ctx, edgeRef.EntityType, edgeRef.EntityID, actualEdgeType, entityType, entityID)
+	for edge, err := range g.StreamIncomingEdges(ctx, entityType, entityID, edgeType) {
 		if err != nil {
 			return nil, err
 		}
-		if exists {
-			edges = append(edges, edge)
-		}
+		edges = append(edges, edge)
 	}
-
 	return edges, nil
 }
 
 // GetAllOutgoingEdges returns all outgoing edges from an entity (all types).
 func (g *Graph) GetAllOutgoingEdges(ctx context.Context, entityType, entityID string) ([]Edge, error) {
-	prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
-	records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
-	if err != nil {
-		return nil, err
-	}
-
 	var allEdges []Edge
-	for _, record := range records {
-		edgeType := extractEdgeTypeFromKey(record.Key)
-		edges, err := g.GetOutgoingEdges(ctx, entityType, entityID, edgeType)
+	for edge, err := range g.StreamAllOutgoingEdges(ctx, entityType, entityID) {
 		if err != nil {
 			return nil, err
 		}
-		allEdges = append(allEdges, edges...)
+		allEdges = append(allEdges, edge)
 	}
-
 	return allEdges, nil
 }
 
 // GetAllIncomingEdges returns all incoming edges to an entity (all types).
 func (g *Graph) GetAllIncomingEdges(ctx context.Context, entityType, entityID string) ([]Edge, error) {
-	prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
-	records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
-	if err != nil {
-		return nil, err
-	}
-
 	var allEdges []Edge
-	for _, record := range records {
-		edgeType := extractEdgeTypeFromKey(record.Key)
-		edges, err := g.GetIncomingEdges(ctx, entityType, entityID, edgeType)
+	for edge, err := range g.StreamAllIncomingEdges(ctx, entityType, entityID) {
 		if err != nil {
 			return nil, err
 		}
-		allEdges = append(allEdges, edges...)
+		allEdges = append(allEdges, edge)
 	}
-
 	return allEdges, nil
+}
+
+// StreamOutgoingEdges returns an iterator that streams outgoing edges of a specific type from an entity.
+func (g *Graph) StreamOutgoingEdges(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
+	return func(yield func(Edge, error) bool) {
+		var prefix string
+		if edgeType == "*" {
+			// Get all outgoing edges regardless of type.
+			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
+		} else {
+			// Get edges of specific type.
+			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/%s/", entityType, entityID, edgeType)
+		}
+
+		records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
+		if err != nil {
+			yield(Edge{}, err)
+			return
+		}
+
+		for _, record := range records {
+			// Check context cancellation.
+			if err := ctx.Err(); err != nil {
+				yield(Edge{}, err)
+				return
+			}
+
+			var edgeRef EdgeRef
+			if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
+				continue // Skip malformed references
+			}
+
+			// Extract edge type from the key if we're in wildcard mode.
+			actualEdgeType := edgeType
+			if edgeType == "*" {
+				actualEdgeType = extractEdgeTypeFromKey(record.Key)
+			}
+
+			// Get the full edge.
+			edge, exists, err := g.GetEdge(ctx, entityType, entityID, actualEdgeType, edgeRef.EntityType, edgeRef.EntityID)
+			if err != nil {
+				if !yield(Edge{}, err) {
+					return
+				}
+				continue
+			}
+			if exists {
+				if !yield(edge, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// StreamIncomingEdges returns an iterator that streams incoming edges of a specific type to an entity.
+func (g *Graph) StreamIncomingEdges(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
+	return func(yield func(Edge, error) bool) {
+		var prefix string
+		if edgeType == "*" {
+			// Get all incoming edges regardless of type.
+			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
+		} else {
+			// Get edges of specific type.
+			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/%s/", entityType, entityID, edgeType)
+		}
+
+		records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
+		if err != nil {
+			yield(Edge{}, err)
+			return
+		}
+
+		for _, record := range records {
+			// Check context cancellation.
+			if err := ctx.Err(); err != nil {
+				yield(Edge{}, err)
+				return
+			}
+
+			var edgeRef EdgeRef
+			if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
+				continue // Skip malformed references
+			}
+
+			// Extract edge type from the key if we're in wildcard mode.
+			actualEdgeType := edgeType
+			if edgeType == "*" {
+				actualEdgeType = extractEdgeTypeFromKey(record.Key)
+			}
+
+			// Get the full edge.
+			edge, exists, err := g.GetEdge(ctx, edgeRef.EntityType, edgeRef.EntityID, actualEdgeType, entityType, entityID)
+			if err != nil {
+				if !yield(Edge{}, err) {
+					return
+				}
+				continue
+			}
+			if exists {
+				if !yield(edge, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// StreamAllOutgoingEdges returns an iterator that streams all outgoing edges from an entity (all types).
+func (g *Graph) StreamAllOutgoingEdges(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
+	return func(yield func(Edge, error) bool) {
+		prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
+		records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
+		if err != nil {
+			yield(Edge{}, err)
+			return
+		}
+
+		// Group records by edge type to avoid duplicate processing.
+		edgeTypes := make(map[string]bool)
+		for _, record := range records {
+			edgeType := extractEdgeTypeFromKey(record.Key)
+			if edgeType != "" {
+				edgeTypes[edgeType] = true
+			}
+		}
+
+		for edgeType := range edgeTypes {
+			// Check context cancellation.
+			if err := ctx.Err(); err != nil {
+				yield(Edge{}, err)
+				return
+			}
+
+			for edge, err := range g.StreamOutgoingEdges(ctx, entityType, entityID, edgeType) {
+				if err != nil {
+					if !yield(Edge{}, err) {
+						return
+					}
+					continue
+				}
+				if !yield(edge, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// StreamAllIncomingEdges returns an iterator that streams all incoming edges to an entity (all types).
+func (g *Graph) StreamAllIncomingEdges(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
+	return func(yield func(Edge, error) bool) {
+		prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
+		records, err := g.store.GetPrefix(ctx, prefix, 0, -1)
+		if err != nil {
+			yield(Edge{}, err)
+			return
+		}
+
+		// Group records by edge type to avoid duplicate processing.
+		edgeTypes := make(map[string]bool)
+		for _, record := range records {
+			edgeType := extractEdgeTypeFromKey(record.Key)
+			if edgeType != "" {
+				edgeTypes[edgeType] = true
+			}
+		}
+
+		for edgeType := range edgeTypes {
+			// Check context cancellation.
+			if err := ctx.Err(); err != nil {
+				yield(Edge{}, err)
+				return
+			}
+
+			for edge, err := range g.StreamIncomingEdges(ctx, entityType, entityID, edgeType) {
+				if err != nil {
+					if !yield(Edge{}, err) {
+						return
+					}
+					continue
+				}
+				if !yield(edge, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// StreamAllEdges returns an iterator that streams all edges in the graph.
+func (g *Graph) StreamAllEdges(ctx context.Context) iter.Seq2[Edge, error] {
+	return func(yield func(Edge, error) bool) {
+		// List all edge keys by using the "graph/edge/" prefix.
+		records, err := g.store.GetPrefix(ctx, "graph/edge/", 0, -1)
+		if err != nil {
+			yield(Edge{}, err)
+			return
+		}
+
+		for _, record := range records {
+			// Check context cancellation.
+			if err := ctx.Err(); err != nil {
+				yield(Edge{}, err)
+				return
+			}
+
+			var edge Edge
+			if err := json.Unmarshal(record.Value, &edge); err != nil {
+				continue // Skip malformed edges.
+			}
+			if !yield(edge, nil) {
+				return
+			}
+		}
+	}
 }
 
 // Helper functions.
@@ -239,21 +378,13 @@ func incomingEdgeRefKey(toEntityType, toEntityID, edgeType, fromEntityType, from
 
 // ListAllEdges returns all edges in the graph.
 func (g *Graph) ListAllEdges(ctx context.Context) ([]Edge, error) {
-	// List all edge keys by using the "graph/edge/" prefix.
-	records, err := g.store.GetPrefix(ctx, "graph/edge/", 0, -1)
-	if err != nil {
-		return nil, err
-	}
-
 	var edges []Edge
-	for _, record := range records {
-		var edge Edge
-		if err := json.Unmarshal(record.Value, &edge); err != nil {
-			continue // Skip malformed edges.
+	for edge, err := range g.StreamAllEdges(ctx) {
+		if err != nil {
+			return nil, err
 		}
 		edges = append(edges, edge)
 	}
-
 	return edges, nil
 }
 
