@@ -18,6 +18,36 @@ This package implements a directed graph where:
 - **Efficient Lookups**: Fast queries for incoming/outgoing edges
 - **Graph Traversal**: BFS, shortest path, neighbor finding
 - **Atomic Operations**: All edge operations are transactional
+- **Pagination Support**: Memory-efficient streaming for large graphs
+- **Batch Retrieval**: Optimized performance with reduced database round trips
+
+## Performance Optimizations
+
+The graph package is optimized for large-scale graphs with the following features:
+
+### Pagination
+
+Instead of loading all edges at once, the graph uses the KV store's paginator to stream results in configurable batches. This prevents memory issues when dealing with nodes that have thousands of edges.
+
+### Batch Retrieval
+
+Rather than making individual database calls for each edge (N+1 query pattern), the graph collects edge keys and uses the `GetBatch()` API to retrieve multiple edges simultaneously, significantly reducing database round trips.
+
+### Configurable Batch Size
+
+```go
+// Default batch size (1000)
+g := graph.New(store)
+
+// Custom batch size for your workload
+g := graph.NewWithBatchSize(store, 500)
+```
+
+Choose batch size based on:
+
+- Available memory
+- Average node degree (number of edges per node)
+- Database performance characteristics
 
 ## Basic Usage
 
@@ -178,7 +208,7 @@ neighbors, err := g.GetNeighbors(ctx, "User", "alice", graph.TraversalOptions{
 
 The graph package uses consistent key patterns for efficient storage and retrieval:
 
-```
+```text
 # Edge storage
 graph/edge/{fromType}/{fromID}/{edgeType}/{toType}/{toID}
 
