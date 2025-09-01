@@ -108,52 +108,8 @@ func (g *Graph) GetEdge(ctx context.Context, fromEntityType, fromEntityID, edgeT
 	return edge, ok, nil
 }
 
-// GetOutgoingEdges returns all outgoing edges of a specific type from an entity.
-func (g *Graph) GetOutgoingEdges(ctx context.Context, entityType, entityID, edgeType string) (edges []Edge, err error) {
-	for edge, err := range g.StreamOutgoingEdges(ctx, entityType, entityID, edgeType) {
-		if err != nil {
-			return nil, err
-		}
-		edges = append(edges, edge)
-	}
-	return edges, nil
-}
-
-// GetIncomingEdges returns all incoming edges of a specific type to an entity.
-func (g *Graph) GetIncomingEdges(ctx context.Context, entityType, entityID, edgeType string) (edges []Edge, err error) {
-	for edge, err := range g.StreamIncomingEdges(ctx, entityType, entityID, edgeType) {
-		if err != nil {
-			return nil, err
-		}
-		edges = append(edges, edge)
-	}
-	return edges, nil
-}
-
-// GetAllOutgoingEdges returns all outgoing edges from an entity (all types).
-func (g *Graph) GetAllOutgoingEdges(ctx context.Context, entityType, entityID string) (allEdges []Edge, err error) {
-	for edge, err := range g.StreamAllOutgoingEdges(ctx, entityType, entityID) {
-		if err != nil {
-			return nil, err
-		}
-		allEdges = append(allEdges, edge)
-	}
-	return allEdges, nil
-}
-
-// GetAllIncomingEdges returns all incoming edges to an entity (all types).
-func (g *Graph) GetAllIncomingEdges(ctx context.Context, entityType, entityID string) (allEdges []Edge, err error) {
-	for edge, err := range g.StreamAllIncomingEdges(ctx, entityType, entityID) {
-		if err != nil {
-			return nil, err
-		}
-		allEdges = append(allEdges, edge)
-	}
-	return allEdges, nil
-}
-
-// StreamOutgoingEdges returns an iterator that streams outgoing edges of a specific type from an entity.
-func (g *Graph) StreamOutgoingEdges(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
+// GetOutgoing returns an iterator that streams outgoing edges of a specific type from an entity.
+func (g *Graph) GetOutgoing(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		var prefix string
 		if edgeType == "*" {
@@ -213,8 +169,8 @@ func (g *Graph) StreamOutgoingEdges(ctx context.Context, entityType, entityID, e
 	}
 }
 
-// StreamIncomingEdges returns an iterator that streams incoming edges of a specific type to an entity.
-func (g *Graph) StreamIncomingEdges(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
+// GetIncoming returns an iterator that streams incoming edges of a specific type to an entity.
+func (g *Graph) GetIncoming(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		var prefix string
 		if edgeType == "*" {
@@ -272,8 +228,8 @@ func (g *Graph) StreamIncomingEdges(ctx context.Context, entityType, entityID, e
 	}
 }
 
-// StreamAllOutgoingEdges returns an iterator that streams all outgoing edges from an entity (all types).
-func (g *Graph) StreamAllOutgoingEdges(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
+// GetAllOutgoing returns an iterator that streams all outgoing edges from an entity (all types).
+func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
 
@@ -305,7 +261,7 @@ func (g *Graph) StreamAllOutgoingEdges(ctx context.Context, entityType, entityID
 				return
 			}
 
-			for edge, err := range g.StreamOutgoingEdges(ctx, entityType, entityID, edgeType) {
+			for edge, err := range g.GetOutgoing(ctx, entityType, entityID, edgeType) {
 				if err != nil {
 					if !yield(Edge{}, err) {
 						return
@@ -320,8 +276,8 @@ func (g *Graph) StreamAllOutgoingEdges(ctx context.Context, entityType, entityID
 	}
 }
 
-// StreamAllIncomingEdges returns an iterator that streams all incoming edges to an entity (all types).
-func (g *Graph) StreamAllIncomingEdges(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
+// GetAllIncoming returns an iterator that streams all incoming edges to an entity (all types).
+func (g *Graph) GetAllIncoming(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
 
@@ -353,7 +309,7 @@ func (g *Graph) StreamAllIncomingEdges(ctx context.Context, entityType, entityID
 				return
 			}
 
-			for edge, err := range g.StreamIncomingEdges(ctx, entityType, entityID, edgeType) {
+			for edge, err := range g.GetIncoming(ctx, entityType, entityID, edgeType) {
 				if err != nil {
 					if !yield(Edge{}, err) {
 						return
@@ -368,8 +324,8 @@ func (g *Graph) StreamAllIncomingEdges(ctx context.Context, entityType, entityID
 	}
 }
 
-// StreamAllEdges returns an iterator that streams all edges in the graph.
-func (g *Graph) StreamAllEdges(ctx context.Context) iter.Seq2[Edge, error] {
+// All returns an iterator that streams all edges in the graph.
+func (g *Graph) All(ctx context.Context) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		// Use paginator to stream all edge keys.
 		for record, err := range g.paginator.GetPrefix(ctx, "graph/edge/") {
@@ -442,18 +398,6 @@ func outgoingEdgeRefKey(fromEntityType, fromEntityID, edgeType, toEntityType, to
 
 func incomingEdgeRefKey(toEntityType, toEntityID, edgeType, fromEntityType, fromEntityID string) string {
 	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/%s/%s", toEntityType, toEntityID, edgeType, fromEntityType, fromEntityID)
-}
-
-// ListAllEdges returns all edges in the graph.
-func (g *Graph) ListAllEdges(ctx context.Context) ([]Edge, error) {
-	var edges []Edge
-	for edge, err := range g.StreamAllEdges(ctx) {
-		if err != nil {
-			return nil, err
-		}
-		edges = append(edges, edge)
-	}
-	return edges, nil
 }
 
 func extractEdgeTypeFromKey(key string) string {

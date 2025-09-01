@@ -161,9 +161,12 @@ func main() {
 
 	// 1. Get all team members and their components.
 	fmt.Println("\n1. Team Red Team members and their stats:")
-	teamMembers, err := g.GetIncomingEdges(ctx, "Team", "team1", "member_of")
-	if err != nil {
-		log.Fatal(err)
+	var teamMembers []graph.Edge
+	for edge, err := range g.GetIncoming(ctx, "Team", "team1", "member_of") {
+		if err != nil {
+			log.Fatal(err)
+		}
+		teamMembers = append(teamMembers, edge)
 	}
 
 	for _, member := range teamMembers {
@@ -199,9 +202,12 @@ func main() {
 
 	// 2. Find players who are friends and check if they're close in position.
 	fmt.Println("\n2. Friend proximity analysis:")
-	friendships, err := g.GetOutgoingEdges(ctx, "Player", "player1", "friends_with")
-	if err != nil {
-		log.Fatal(err)
+	var friendships []graph.Edge
+	for edge, err := range g.GetOutgoing(ctx, "Player", "player1", "friends_with") {
+		if err != nil {
+			log.Fatal(err)
+		}
+		friendships = append(friendships, edge)
 	}
 
 	for _, friendship := range friendships {
@@ -224,9 +230,12 @@ func main() {
 
 	// 3. Find guild members who might form alliances (not rivals).
 	fmt.Println("\n3. Potential guild alliances:")
-	guildMembers, err := g.GetIncomingEdges(ctx, "Guild", "guild1", "member_of")
-	if err != nil {
-		log.Fatal(err)
+	var guildMembers []graph.Edge
+	for edge, err := range g.GetIncoming(ctx, "Guild", "guild1", "member_of") {
+		if err != nil {
+			log.Fatal(err)
+		}
+		guildMembers = append(guildMembers, edge)
 	}
 
 	for i, member1 := range guildMembers {
@@ -278,13 +287,23 @@ func main() {
 		}
 
 		// Team bonus - get team members and add team size bonus.
-		playerTeams, err := g.GetOutgoingEdges(ctx, "Player", playerID, "member_of")
-		if err == nil {
+		var playerTeams []graph.Edge
+		for edge, err := range g.GetOutgoing(ctx, "Player", playerID, "member_of") {
+			if err == nil {
+				playerTeams = append(playerTeams, edge)
+			}
+		}
+		if len(playerTeams) > 0 {
 			for _, teamEdge := range playerTeams {
 				if teamEdge.ToEntityType == "Team" {
 					// Count team members.
-					teamMembers, err := g.GetIncomingEdges(ctx, "Team", teamEdge.ToEntityID, "member_of")
-					if err == nil {
+					var teamMembers []graph.Edge
+					for edge, err := range g.GetIncoming(ctx, "Team", teamEdge.ToEntityID, "member_of") {
+						if err == nil {
+							teamMembers = append(teamMembers, edge)
+						}
+					}
+					if len(teamMembers) > 0 {
 						teamBonus := len(teamMembers) * 5 // 5 points per team member
 						effectiveness += teamBonus
 						fmt.Printf("  %s: Base: %d, Team bonus: %d, Total: %d\n",

@@ -10,13 +10,13 @@ import (
 )
 
 type GraphCommand struct {
-	AddEdge    GraphAddEdgeCommand    `cmd:"add-edge" help:"Add an edge between two entities"`
-	GetEdge    GraphGetEdgeCommand    `cmd:"get-edge" help:"Get a specific edge"`
+	AddEdge     GraphAddEdgeCommand     `cmd:"add-edge" help:"Add an edge between two entities"`
+	GetEdge     GraphGetEdgeCommand     `cmd:"get-edge" help:"Get a specific edge"`
 	GetOutgoing GraphGetOutgoingCommand `cmd:"get-outgoing" help:"Get outgoing edges from an entity"`
 	GetIncoming GraphGetIncomingCommand `cmd:"get-incoming" help:"Get incoming edges to an entity"`
-	RemoveEdge GraphRemoveEdgeCommand `cmd:"remove-edge" help:"Remove an edge between two entities"`
-	FindPath   GraphFindPathCommand   `cmd:"find-path" help:"Find shortest path between two entities"`
-	View       GraphViewCommand       `cmd:"view" help:"Generate graph visualization output"`
+	RemoveEdge  GraphRemoveEdgeCommand  `cmd:"remove-edge" help:"Remove an edge between two entities"`
+	FindPath    GraphFindPathCommand    `cmd:"find-path" help:"Find shortest path between two entities"`
+	View        GraphViewCommand        `cmd:"view" help:"Generate graph visualization output"`
 }
 
 type GraphAddEdgeCommand struct {
@@ -111,13 +111,19 @@ func (c *GraphGetOutgoingCommand) Run(ctx context.Context, g GlobalFlags) error 
 
 	var edges []graph.Edge
 	if c.EdgeType == "*" {
-		edges, err = gr.GetAllOutgoingEdges(ctx, c.EntityType, c.EntityID)
+		for edge, err := range gr.GetAllOutgoing(ctx, c.EntityType, c.EntityID) {
+			if err != nil {
+				return fmt.Errorf("failed to get outgoing edges: %w", err)
+			}
+			edges = append(edges, edge)
+		}
 	} else {
-		edges, err = gr.GetOutgoingEdges(ctx, c.EntityType, c.EntityID, c.EdgeType)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to get outgoing edges: %w", err)
+		for edge, err := range gr.GetOutgoing(ctx, c.EntityType, c.EntityID, c.EdgeType) {
+			if err != nil {
+				return fmt.Errorf("failed to get outgoing edges: %w", err)
+			}
+			edges = append(edges, edge)
+		}
 	}
 
 	if len(edges) == 0 {
@@ -152,13 +158,19 @@ func (c *GraphGetIncomingCommand) Run(ctx context.Context, g GlobalFlags) error 
 
 	var edges []graph.Edge
 	if c.EdgeType == "*" {
-		edges, err = gr.GetAllIncomingEdges(ctx, c.EntityType, c.EntityID)
+		for edge, err := range gr.GetAllIncoming(ctx, c.EntityType, c.EntityID) {
+			if err != nil {
+				return fmt.Errorf("failed to get incoming edges: %w", err)
+			}
+			edges = append(edges, edge)
+		}
 	} else {
-		edges, err = gr.GetIncomingEdges(ctx, c.EntityType, c.EntityID, c.EdgeType)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to get incoming edges: %w", err)
+		for edge, err := range gr.GetIncoming(ctx, c.EntityType, c.EntityID, c.EdgeType) {
+			if err != nil {
+				return fmt.Errorf("failed to get incoming edges: %w", err)
+			}
+			edges = append(edges, edge)
+		}
 	}
 
 	if len(edges) == 0 {
@@ -305,7 +317,7 @@ func (c *GraphViewCommand) outputDot(ctx context.Context, gr *graph.Graph) error
 	for _, edge := range edges {
 		fromNode := fmt.Sprintf("%s_%s", edge.FromEntityType, edge.FromEntityID)
 		toNode := fmt.Sprintf("%s_%s", edge.ToEntityType, edge.ToEntityID)
-		
+
 		label := edge.Type
 		if len(edge.Properties) > 0 {
 			// Add properties to label.
@@ -318,7 +330,7 @@ func (c *GraphViewCommand) outputDot(ctx context.Context, gr *graph.Graph) error
 			}
 			label += fmt.Sprintf("\\n{%s}", propStr)
 		}
-		
+
 		fmt.Printf("  \"%s\" -> \"%s\" [label=\"%s\"];\n", fromNode, toNode, label)
 	}
 
@@ -338,7 +350,7 @@ func (c *GraphViewCommand) outputMermaid(ctx context.Context, gr *graph.Graph) e
 	for _, edge := range edges {
 		fromNode := fmt.Sprintf("%s_%s", edge.FromEntityType, edge.FromEntityID)
 		toNode := fmt.Sprintf("%s_%s", edge.ToEntityType, edge.ToEntityID)
-		
+
 		label := edge.Type
 		if len(edge.Properties) > 0 {
 			// Add a subset of properties to keep it readable.
@@ -347,7 +359,7 @@ func (c *GraphViewCommand) outputMermaid(ctx context.Context, gr *graph.Graph) e
 				break // Only show first property to keep it clean.
 			}
 		}
-		
+
 		fmt.Printf("  %s -->|%s| %s\n", fromNode, label, toNode)
 	}
 
@@ -359,11 +371,14 @@ func (c *GraphViewCommand) collectEdges(ctx context.Context, gr *graph.Graph) ([
 
 	if c.EntityType == "*" {
 		// Get all edges in the graph by scanning all graph keys.
-		items, err := gr.ListAllEdges(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list all edges: %w", err)
+		var items []graph.Edge
+		for edge, err := range gr.All(ctx) {
+			if err != nil {
+				return nil, fmt.Errorf("failed to list all edges: %w", err)
+			}
+			items = append(items, edge)
 		}
-		
+
 		// Apply edge type filter if specified.
 		if c.EdgeType != "*" {
 			var filtered []graph.Edge
@@ -383,18 +398,20 @@ func (c *GraphViewCommand) collectEdges(ctx context.Context, gr *graph.Graph) ([
 			return nil, fmt.Errorf("getting all entities of a type is not yet supported - please specify both entity type and ID, or use '*' for both")
 		} else {
 			// Get edges for specific entity.
-			outgoing, err := gr.GetOutgoingEdges(ctx, c.EntityType, c.EntityID, c.EdgeType)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get outgoing edges: %w", err)
+			for edge, err := range gr.GetOutgoing(ctx, c.EntityType, c.EntityID, c.EdgeType) {
+				if err != nil {
+					return nil, fmt.Errorf("failed to get outgoing edges: %w", err)
+				}
+				allEdges = append(allEdges, edge)
 			}
-			allEdges = append(allEdges, outgoing...)
 
 			// For visualization, also include incoming edges to show the full picture.
-			incoming, err := gr.GetIncomingEdges(ctx, c.EntityType, c.EntityID, c.EdgeType)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get incoming edges: %w", err)
+			for edge, err := range gr.GetIncoming(ctx, c.EntityType, c.EntityID, c.EdgeType) {
+				if err != nil {
+					return nil, fmt.Errorf("failed to get incoming edges: %w", err)
+				}
+				allEdges = append(allEdges, edge)
 			}
-			allEdges = append(allEdges, incoming...)
 		}
 	}
 
@@ -435,7 +452,7 @@ func (c *GraphViewCommand) filterByDepth(edges []graph.Edge, rootType, rootID st
 		for _, edge := range edges {
 			if edge.FromEntityType == current.nodeType && edge.FromEntityID == current.nodeID {
 				filtered = append(filtered, edge)
-				
+
 				// Add target to queue if not visited or found at greater depth.
 				targetKey := fmt.Sprintf("%s/%s", edge.ToEntityType, edge.ToEntityID)
 				if prevDepth, ok := visited[targetKey]; !ok || prevDepth > current.depth+1 {

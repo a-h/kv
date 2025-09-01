@@ -37,8 +37,8 @@ func StreamingDemo() {
 
 	// Demo 1: Stream outgoing edges for real-time UI updates.
 	fmt.Println("1. Streaming outgoing 'follows' edges from alice:")
-	simulateUIUpdates("StreamOutgoingEdges", func() {
-		for edge, err := range g.StreamOutgoingEdges(ctx, "User", "alice", "follows") {
+	simulateUIUpdates("GetOutgoing", func() {
+		for edge, err := range g.GetOutgoing(ctx, "User", "alice", "follows") {
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				continue
@@ -51,8 +51,8 @@ func StreamingDemo() {
 
 	// Demo 2: Stream all outgoing edges with type information.
 	fmt.Println("\n2. Streaming all outgoing edges from alice:")
-	simulateUIUpdates("StreamAllOutgoingEdges", func() {
-		for edge, err := range g.StreamAllOutgoingEdges(ctx, "User", "alice") {
+	simulateUIUpdates("GetAllOutgoing", func() {
+		for edge, err := range g.GetAllOutgoing(ctx, "User", "alice") {
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				continue
@@ -65,8 +65,8 @@ func StreamingDemo() {
 
 	// Demo 3: Stream incoming edges to show followers.
 	fmt.Println("\n3. Streaming incoming 'follows' edges to bob:")
-	simulateUIUpdates("StreamIncomingEdges", func() {
-		for edge, err := range g.StreamIncomingEdges(ctx, "User", "bob", "follows") {
+	simulateUIUpdates("GetIncoming", func() {
+		for edge, err := range g.GetIncoming(ctx, "User", "bob", "follows") {
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				continue
@@ -78,9 +78,9 @@ func StreamingDemo() {
 
 	// Demo 4: Stream all edges for analytics dashboard.
 	fmt.Println("\n4. Streaming all edges for analytics dashboard:")
-	simulateUIUpdates("StreamAllEdges", func() {
+	simulateUIUpdates("All", func() {
 		edgeTypeCounts := make(map[string]int)
-		for edge, err := range g.StreamAllEdges(ctx) {
+		for edge, err := range g.All(ctx) {
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				continue
@@ -101,7 +101,7 @@ func StreamingDemo() {
 
 	fmt.Println("   Starting stream with 100ms timeout...")
 	edgeCount := 0
-	for edge, err := range g.StreamAllEdges(cancelCtx) {
+	for edge, err := range g.All(cancelCtx) {
 		if err != nil {
 			fmt.Printf("   Stream cancelled due to: %v\n", err)
 			break
