@@ -102,6 +102,7 @@ type CLI struct {
 	Consumer  ConsumerCommand  `cmd:"consumer" help:"Consumer operations (get, status, commit)."`
 	Lock      LockCommand      `cmd:"lock" help:"Lock operations (acquire, release)."`
 	Task      TaskCommand      `cmd:"task" help:"Task operations (create, list, get, delete, run)."`
+	Graph     GraphCommand     `cmd:"graph" help:"Graph operations (add-edge, get-edge, find-path)."`
 }
 
 func main() {

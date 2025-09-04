@@ -33,6 +33,7 @@ type mockStore struct {
 	streamFunc       func(ctx context.Context, t Type, seq, limit int) ([]StreamRecord, error)
 	putFunc          func(ctx context.Context, key string, version int, value any) error
 	getFunc          func(ctx context.Context, key string, value any) (Record, bool, error)
+	getBatchFunc     func(ctx context.Context, keys ...string) (map[string]Record, error)
 	deleteFunc       func(ctx context.Context, keys ...string) (int, error)
 	initFunc         func(ctx context.Context) error
 	countFunc        func(ctx context.Context) (int, error)
@@ -93,6 +94,12 @@ func (m *mockStore) Get(ctx context.Context, key string, value any) (Record, boo
 		return m.getFunc(ctx, key, value)
 	}
 	return Record{}, false, nil
+}
+func (m *mockStore) GetBatch(ctx context.Context, keys ...string) (map[string]Record, error) {
+	if m.getBatchFunc != nil {
+		return m.getBatchFunc(ctx, keys...)
+	}
+	return make(map[string]Record), nil
 }
 func (m *mockStore) Delete(ctx context.Context, keys ...string) (int, error) {
 	if m.deleteFunc != nil {
