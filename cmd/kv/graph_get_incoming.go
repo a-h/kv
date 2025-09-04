@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"iter"
 
 	"github.com/a-h/kv/graph"
 )
@@ -26,10 +25,8 @@ func (c *GraphGetIncomingCommand) Run(ctx context.Context, g GlobalFlags) error 
 	node := graph.NewNodeRef(c.EntityID, c.EntityType)
 
 	// Get the appropriate edge iterator based on edge type.
-	var edgeIterator iter.Seq2[graph.Edge, error]
-	if c.EdgeType == "*" {
-		edgeIterator = gr.GetAllIncoming(ctx, node)
-	} else {
+	edgeIterator := gr.GetAllIncoming(ctx, node)
+	if c.EdgeType != "*" {
 		edgeIterator = gr.GetIncoming(ctx, node, c.EdgeType)
 	}
 

@@ -45,7 +45,7 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 	}}
 
 	visited[NewNodeRef(startEntityID, startEntityType).Key()] = true
-	nodesVisited := 1 // Track for observability
+	nodesVisited := 1
 
 	for len(queue) > 0 && (opts.VisitLimit == 0 || len(paths) < opts.VisitLimit) {
 		// Check for runaway traversals.
@@ -135,7 +135,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 	}}
 
 	visited[NewNodeRef(fromEntityID, fromEntityType).Key()] = true
-	nodesVisited := 1 // Track for observability
+	nodesVisited := 1
 
 	for len(queue) > 0 {
 		// Check for runaway traversals.

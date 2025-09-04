@@ -31,7 +31,6 @@ func (c *GraphGetEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to get edge: %w", err)
 	}
-
 	if !exists {
 		return fmt.Errorf("edge not found")
 	}
