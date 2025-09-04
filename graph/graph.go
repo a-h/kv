@@ -389,30 +389,30 @@ func extractEdgeTypeFromKey(key string) string {
 	// or: graph/node/{type}/{id}/incoming/{edgeType}/{sourceType}/{sourceID}
 	// All components are URL path escaped.
 
-	// Find the position of "/outgoing/" or "/incoming/"
-	outgoingPos := strings.Index(key, "/outgoing/")
-	incomingPos := strings.Index(key, "/incoming/")
+	// Split the key into parts
+	parts := strings.Split(key, "/")
 
-	var startPos int
-	if outgoingPos != -1 {
-		startPos = outgoingPos + len("/outgoing/")
-	} else if incomingPos != -1 {
-		startPos = incomingPos + len("/incoming/")
-	} else {
-		return "" // Invalid key format
+	// We need at least: ["graph", "node", type, id, direction, edgeType, targetType, targetID]
+	if len(parts) < 8 {
+		return ""
 	}
 
-	// Find the next slash after the edge type
-	endPos := strings.Index(key[startPos:], "/")
-	if endPos == -1 {
-		return "" // Invalid key format - should have target type after edge type
+	// Check if this is a valid graph node key
+	if parts[0] != "graph" || parts[1] != "node" {
+		return ""
 	}
 
-	// Extract the URL-encoded edge type and unescape it
-	encodedEdgeType := key[startPos : startPos+endPos]
+	// Check direction and extract edge type
+	direction := parts[4]
+	if direction != "outgoing" && direction != "incoming" {
+		return ""
+	}
+
+	// The edge type is at index 5, URL decode it
+	encodedEdgeType := parts[5]
 	edgeType, err := url.PathUnescape(encodedEdgeType)
 	if err != nil {
-		return "" // Invalid URL encoding
+		return ""
 	}
 
 	return edgeType
