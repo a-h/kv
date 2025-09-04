@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"net/url"
 	"strings"
 
 	"github.com/a-h/kv"
 )
 
-// Edge represents a relationship between two entities.
+// Edge represents a relationship between two nodes.
 type Edge struct {
 	From NodeRef         `json:"from"`
 	To   NodeRef         `json:"to"`
@@ -20,7 +21,7 @@ type Edge struct {
 
 // Key returns a unique string key for this edge.
 func (e Edge) Key() string {
-	return fmt.Sprintf("graph/edge/%s/%s/%s/%s/%s", e.From.Type, e.From.ID, e.Type, e.To.Type, e.To.ID)
+	return buildEdgeKey(e.From, e.Type, e.To)
 }
 
 // NodeRef represents a reference to a node in the graph.
@@ -31,7 +32,7 @@ type NodeRef struct {
 
 // Key returns a unique string key for this node reference.
 func (n NodeRef) Key() string {
-	return fmt.Sprintf("%s:%s", n.Type, n.ID)
+	return buildNodeRefKey(n.Type, n.ID)
 }
 
 // NewNodeRef creates a new NodeRef with the given type and ID.
@@ -81,7 +82,7 @@ func NewWithPaginator(paginator *kv.Paginator) *Graph {
 	}
 }
 
-// AddEdge creates a directed edge from one entity to another.
+// AddEdge creates a directed edge from one node to another.
 func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
 	if edge.From.Type == "" || edge.From.ID == "" || edge.To.Type == "" || edge.To.ID == "" || edge.Type == "" {
 		return fmt.Errorf("edge fields cannot be empty")
@@ -91,10 +92,10 @@ func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
 	edgeKey := edge.Key()
 
 	// Store outgoing edge reference.
-	outgoingRefKey := outgoingEdgeRefKey(edge.From, edge.Type, edge.To)
+	outgoingRefKey := buildOutgoingEdgeRefKey(edge.From, edge.Type, edge.To)
 
 	// Store incoming edge reference.
-	incomingRefKey := incomingEdgeRefKey(edge.To, edge.Type, edge.From)
+	incomingRefKey := buildIncomingEdgeRefKey(edge.To, edge.Type, edge.From)
 
 	edgeRef := EdgeRef{
 		Node:     edge.To,
@@ -120,8 +121,8 @@ func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
 func (g *Graph) RemoveEdge(ctx context.Context, from NodeRef, edgeType string, to NodeRef) error {
 	edge := NewEdge(from, to, edgeType, nil)
 	edgeKey := edge.Key()
-	outgoingRefKey := outgoingEdgeRefKey(from, edgeType, to)
-	incomingRefKey := incomingEdgeRefKey(to, edgeType, from)
+	outgoingRefKey := buildOutgoingEdgeRefKey(from, edgeType, to)
+	incomingRefKey := buildIncomingEdgeRefKey(to, edgeType, from)
 
 	mutations := []kv.Mutation{
 		kv.Delete(edgeKey),
@@ -147,7 +148,7 @@ func (g *Graph) GetEdge(ctx context.Context, from NodeRef, edgeType string, to N
 // GetOutgoing returns an iterator that streams outgoing edges of a specific type from a node.
 func (g *Graph) GetOutgoing(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
-		prefix := outgoingEdgeRefPrefix(node, edgeType)
+		prefix := buildOutgoingEdgeRefPrefix(node, edgeType)
 
 		// Use paginator to stream edge references in batches.
 		var edgeKeys []string
@@ -167,7 +168,8 @@ func (g *Graph) GetOutgoing(ctx context.Context, node NodeRef, edgeType string) 
 
 			var edgeRef EdgeRef
 			if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
-				continue // Skip malformed references
+				// Skip malformed references.
+				continue
 			}
 
 			// Extract edge type from the key if we're in wildcard mode.
@@ -202,7 +204,7 @@ func (g *Graph) GetOutgoing(ctx context.Context, node NodeRef, edgeType string) 
 // GetIncoming returns an iterator that streams incoming edges of a specific type to a node.
 func (g *Graph) GetIncoming(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
-		prefix := incomingEdgeRefPrefix(node, edgeType)
+		prefix := buildIncomingEdgeRefPrefix(node, edgeType)
 
 		// Use paginator to stream edge references in batches.
 		var edgeKeys []string
@@ -280,7 +282,8 @@ func (g *Graph) All(ctx context.Context) iter.Seq2[Edge, error] {
 
 			var edge Edge
 			if err := json.Unmarshal(record.Value, &edge); err != nil {
-				continue // Skip malformed edges.
+				// Skip malformed edges.
+				continue
 			}
 			if !yield(edge, nil) {
 				return
@@ -314,7 +317,8 @@ func (g *Graph) processBatchedEdges(ctx context.Context, edgeKeys []string, yiel
 
 		var edge Edge
 		if err := json.Unmarshal(record.Value, &edge); err != nil {
-			continue // Skip malformed edges
+			// Skip malformed edges.
+			continue
 		}
 
 		if !yield(edge, nil) {
@@ -325,35 +329,91 @@ func (g *Graph) processBatchedEdges(ctx context.Context, edgeKeys []string, yiel
 	return true
 }
 
-// Individual edge reference keys for scalability.
-func outgoingEdgeRefKey(from NodeRef, edgeType string, to NodeRef) string {
-	return fmt.Sprintf("graph/node/%s/%s/outgoing/%s/%s/%s", from.Type, from.ID, edgeType, to.Type, to.ID)
+func buildEdgeKey(from NodeRef, edgeType string, to NodeRef) string {
+	return fmt.Sprintf("graph/edge/%s/%s/%s/%s/%s",
+		url.PathEscape(from.Type),
+		url.PathEscape(from.ID),
+		url.PathEscape(edgeType),
+		url.PathEscape(to.Type),
+		url.PathEscape(to.ID))
 }
 
-func incomingEdgeRefKey(to NodeRef, edgeType string, from NodeRef) string {
-	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/%s/%s", to.Type, to.ID, edgeType, from.Type, from.ID)
+func buildNodeRefKey(nodeType, nodeID string) string {
+	return fmt.Sprintf("%s:%s", url.PathEscape(nodeType), url.PathEscape(nodeID))
 }
 
-func outgoingEdgeRefPrefix(node NodeRef, edgeType string) string {
+func buildOutgoingEdgeRefKey(from NodeRef, edgeType string, to NodeRef) string {
+	return fmt.Sprintf("graph/node/%s/%s/outgoing/%s/%s/%s",
+		url.PathEscape(from.Type),
+		url.PathEscape(from.ID),
+		url.PathEscape(edgeType),
+		url.PathEscape(to.Type),
+		url.PathEscape(to.ID))
+}
+
+func buildIncomingEdgeRefKey(to NodeRef, edgeType string, from NodeRef) string {
+	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/%s/%s",
+		url.PathEscape(to.Type),
+		url.PathEscape(to.ID),
+		url.PathEscape(edgeType),
+		url.PathEscape(from.Type),
+		url.PathEscape(from.ID))
+}
+
+func buildOutgoingEdgeRefPrefix(node NodeRef, edgeType string) string {
 	if edgeType == "*" {
-		return fmt.Sprintf("graph/node/%s/%s/outgoing/", node.Type, node.ID)
+		return fmt.Sprintf("graph/node/%s/%s/outgoing/",
+			url.PathEscape(node.Type),
+			url.PathEscape(node.ID))
 	}
-	return fmt.Sprintf("graph/node/%s/%s/outgoing/%s/", node.Type, node.ID, edgeType)
+	return fmt.Sprintf("graph/node/%s/%s/outgoing/%s/",
+		url.PathEscape(node.Type),
+		url.PathEscape(node.ID),
+		url.PathEscape(edgeType))
 }
 
-func incomingEdgeRefPrefix(node NodeRef, edgeType string) string {
+func buildIncomingEdgeRefPrefix(node NodeRef, edgeType string) string {
 	if edgeType == "*" {
-		return fmt.Sprintf("graph/node/%s/%s/incoming/", node.Type, node.ID)
+		return fmt.Sprintf("graph/node/%s/%s/incoming/",
+			url.PathEscape(node.Type),
+			url.PathEscape(node.ID))
 	}
-	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/", node.Type, node.ID, edgeType)
+	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/",
+		url.PathEscape(node.Type),
+		url.PathEscape(node.ID),
+		url.PathEscape(edgeType))
 }
 
 func extractEdgeTypeFromKey(key string) string {
-	parts := strings.Split(key, "/")
 	// Key structure: graph/node/{type}/{id}/outgoing/{edgeType}/{targetType}/{targetID}
 	// or: graph/node/{type}/{id}/incoming/{edgeType}/{sourceType}/{sourceID}
-	if len(parts) < 6 {
-		return ""
+	// All components are URL path escaped.
+
+	// Find the position of "/outgoing/" or "/incoming/"
+	outgoingPos := strings.Index(key, "/outgoing/")
+	incomingPos := strings.Index(key, "/incoming/")
+
+	var startPos int
+	if outgoingPos != -1 {
+		startPos = outgoingPos + len("/outgoing/")
+	} else if incomingPos != -1 {
+		startPos = incomingPos + len("/incoming/")
+	} else {
+		return "" // Invalid key format
 	}
-	return parts[5] // The edge type is at index 5
+
+	// Find the next slash after the edge type
+	endPos := strings.Index(key[startPos:], "/")
+	if endPos == -1 {
+		return "" // Invalid key format - should have target type after edge type
+	}
+
+	// Extract the URL-encoded edge type and unescape it
+	encodedEdgeType := key[startPos : startPos+endPos]
+	edgeType, err := url.PathUnescape(encodedEdgeType)
+	if err != nil {
+		return "" // Invalid URL encoding
+	}
+
+	return edgeType
 }
