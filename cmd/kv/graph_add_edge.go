@@ -30,13 +30,12 @@ func (c *GraphAddEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 
 	gr := graph.New(store)
 
-	edge := graph.Edge{
-		FromEntityType: c.FromType,
-		FromEntityID:   c.FromID,
-		ToEntityType:   c.ToType,
-		ToEntityID:     c.ToID,
-		Type:           c.EdgeType,
-	}
+	edge := graph.NewEdge(
+		graph.NewNodeRef(c.FromType, c.FromID),
+		graph.NewNodeRef(c.ToType, c.ToID),
+		c.EdgeType,
+		nil,
+	)
 
 	// Read properties from stdin if available.
 	stat, err := os.Stdin.Stat()

@@ -47,7 +47,7 @@ func (c *GraphFindPathCommand) Run(ctx context.Context, g GlobalFlags) error {
 			edge := path.Edges[i-1]
 			fmt.Printf(" -[%s]-> ", edge.Type)
 		}
-		fmt.Printf("%s/%s", node.EntityType, node.EntityID)
+		fmt.Print(node.Key())
 	}
 	fmt.Println()
 

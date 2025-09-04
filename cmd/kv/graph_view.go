@@ -47,10 +47,8 @@ func (c *GraphViewCommand) outputDot(ctx context.Context, gr *graph.Graph) error
 	// Collect unique nodes.
 	nodes := make(map[string]bool)
 	for _, edge := range edges {
-		fromNode := fmt.Sprintf("%s_%s", edge.FromEntityType, edge.FromEntityID)
-		toNode := fmt.Sprintf("%s_%s", edge.ToEntityType, edge.ToEntityID)
-		nodes[fromNode] = true
-		nodes[toNode] = true
+		nodes[edge.From.Key()] = true
+		nodes[edge.To.Key()] = true
 	}
 
 	// Output node definitions.
@@ -61,8 +59,8 @@ func (c *GraphViewCommand) outputDot(ctx context.Context, gr *graph.Graph) error
 
 	// Output edges.
 	for _, edge := range edges {
-		fromNode := fmt.Sprintf("%s_%s", edge.FromEntityType, edge.FromEntityID)
-		toNode := fmt.Sprintf("%s_%s", edge.ToEntityType, edge.ToEntityID)
+		fromNode := edge.From.Key()
+		toNode := edge.To.Key()
 
 		label := edge.Type
 		if len(edge.Data) > 0 {
@@ -87,8 +85,8 @@ func (c *GraphViewCommand) outputMermaid(ctx context.Context, gr *graph.Graph) e
 
 	// Output edges in Mermaid format.
 	for _, edge := range edges {
-		fromNode := fmt.Sprintf("%s_%s", edge.FromEntityType, edge.FromEntityID)
-		toNode := fmt.Sprintf("%s_%s", edge.ToEntityType, edge.ToEntityID)
+		fromNode := edge.From.Key()
+		toNode := edge.To.Key()
 
 		label := edge.Type
 		if len(edge.Data) > 0 {
@@ -181,7 +179,7 @@ func (c *GraphViewCommand) filterByDepth(edges []graph.Edge, rootType, rootID st
 		nodeID   string
 		depth    int
 	}{{rootType, rootID, 0}}
-	visited[fmt.Sprintf("%s/%s", rootType, rootID)] = 0
+	visited[fmt.Sprintf("%s:%s", rootType, rootID)] = 0
 
 	for len(queue) > 0 {
 		current := queue[0]
@@ -193,18 +191,18 @@ func (c *GraphViewCommand) filterByDepth(edges []graph.Edge, rootType, rootID st
 
 		// Find edges from this node.
 		for _, edge := range edges {
-			if edge.FromEntityType == current.nodeType && edge.FromEntityID == current.nodeID {
+			if edge.From.Type == current.nodeType && edge.From.ID == current.nodeID {
 				filtered = append(filtered, edge)
 
 				// Add target to queue if not visited or found at greater depth.
-				targetKey := fmt.Sprintf("%s/%s", edge.ToEntityType, edge.ToEntityID)
+				targetKey := edge.To.Key()
 				if prevDepth, ok := visited[targetKey]; !ok || prevDepth > current.depth+1 {
 					visited[targetKey] = current.depth + 1
 					queue = append(queue, struct {
 						nodeType string
 						nodeID   string
 						depth    int
-					}{edge.ToEntityType, edge.ToEntityID, current.depth + 1})
+					}{edge.To.Type, edge.To.ID, current.depth + 1})
 				}
 			}
 		}

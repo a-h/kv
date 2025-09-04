@@ -113,47 +113,51 @@ func run() error {
 	// Graph: Add relationships between entities.
 	relationships := []graph.Edge{
 		// Team memberships.
-		{
-			FromEntityType: "Player", FromEntityID: "player1",
-			ToEntityType: "Team", ToEntityID: "team1",
-			Type: "member_of",
-		},
-		{
-			FromEntityType: "Player", FromEntityID: "player2",
-			ToEntityType: "Team", ToEntityID: "team1",
-			Type: "member_of",
-		},
+		graph.NewEdge(
+			graph.NewNodeRef("Player", "player1"),
+			graph.NewNodeRef("Team", "team1"),
+			"member_of",
+			nil,
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("Player", "player2"),
+			graph.NewNodeRef("Team", "team1"),
+			"member_of",
+			nil,
+		),
 		// Guild memberships.
-		{
-			FromEntityType: "Player", FromEntityID: "player1",
-			ToEntityType: "Guild", ToEntityID: "guild1",
-			Type: "member_of",
-		},
-		{
-			FromEntityType: "Player", FromEntityID: "player3",
-			ToEntityType: "Guild", ToEntityID: "guild1",
-			Type: "member_of",
-		},
+		graph.NewEdge(
+			graph.NewNodeRef("Player", "player1"),
+			graph.NewNodeRef("Guild", "guild1"),
+			"member_of",
+			nil,
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("Player", "player3"),
+			graph.NewNodeRef("Guild", "guild1"),
+			"member_of",
+			nil,
+		),
 		// Friendships.
-		{
-			FromEntityType: "Player", FromEntityID: "player1",
-			ToEntityType: "Player", ToEntityID: "player2",
-			Type: "friends_with",
-			Data: json.RawMessage(`{"since": "2024-01-01"}`),
-		},
-		{
-			FromEntityType: "Player", FromEntityID: "player2",
-			ToEntityType: "Player", ToEntityID: "player1",
-			Type: "friends_with",
-			Data: json.RawMessage(`{"since": "2024-01-01"}`),
-		},
+		graph.NewEdge(
+			graph.NewNodeRef("Player", "player1"),
+			graph.NewNodeRef("Player", "player2"),
+			"friends_with",
+			json.RawMessage(`{"since": "2024-01-01"}`),
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("Player", "player2"),
+			graph.NewNodeRef("Player", "player1"),
+			"friends_with",
+			json.RawMessage(`{"since": "2024-01-01"}`),
+		),
 		// Rivalries.
-		{
-			FromEntityType: "Player", FromEntityID: "player1",
-			ToEntityType: "Player", ToEntityID: "player3",
-			Type: "rival_of",
-			Data: json.RawMessage(`{"intensity": 7}`),
-		},
+		graph.NewEdge(
+			graph.NewNodeRef("Player", "player1"),
+			graph.NewNodeRef("Player", "player3"),
+			"rival_of",
+			json.RawMessage(`{"intensity": 7}`),
+		),
 	}
 
 	for _, rel := range relationships {
@@ -176,7 +180,7 @@ func run() error {
 	}
 
 	for _, member := range teamMembers {
-		playerID := member.FromEntityID
+		playerID := member.From.ID
 		fmt.Printf("  Player: %s\n", playerID)
 
 		// Get player's components.
@@ -217,7 +221,7 @@ func run() error {
 	}
 
 	for _, friendship := range friendships {
-		friendID := friendship.ToEntityID
+		friendID := friendship.To.ID
 		fmt.Printf("  %s is friends with %s\n", "player1", friendID)
 
 		// Get both players' positions.
@@ -250,8 +254,8 @@ func run() error {
 				continue // Avoid duplicates and self-comparison
 			}
 
-			player1ID := member1.FromEntityID
-			player2ID := member2.FromEntityID
+			player1ID := member1.From.ID
+			player2ID := member2.From.ID
 
 			// Check if they're rivals.
 			_, isRival, err := g.GetEdge(ctx, "Player", player1ID, "rival_of", "Player", player2ID)
@@ -301,10 +305,10 @@ func run() error {
 		}
 		if len(playerTeams) > 0 {
 			for _, teamEdge := range playerTeams {
-				if teamEdge.ToEntityType == "Team" {
+				if teamEdge.To.Type == "Team" {
 					// Count team members.
 					var teamMembers []graph.Edge
-					for edge, err := range g.GetIncoming(ctx, "Team", teamEdge.ToEntityID, "member_of") {
+					for edge, err := range g.GetIncoming(ctx, "Team", teamEdge.To.ID, "member_of") {
 						if err == nil {
 							teamMembers = append(teamMembers, edge)
 						}

@@ -60,13 +60,12 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 	}
 
 	for _, rel := range followRelationships {
-		edge := graph.Edge{
-			FromEntityType: "User",
-			FromEntityID:   rel.from,
-			ToEntityType:   "User",
-			ToEntityID:     rel.to,
-			Type:           "follows",
-		}
+		edge := graph.NewEdge(
+			graph.NewNodeRef("User", rel.from),
+			graph.NewNodeRef("User", rel.to),
+			"follows",
+			nil,
+		)
 		if err := g.AddEdge(ctx, edge); err != nil {
 			t.Fatalf("failed to add follow edge %s -> %s: %v", rel.from, rel.to, err)
 		}
@@ -84,14 +83,12 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 
 	for _, rel := range likeRelationships {
 		edgeData, _ := json.Marshal(map[string]any{"score": rel.score})
-		edge := graph.Edge{
-			FromEntityType: "User",
-			FromEntityID:   rel.user,
-			ToEntityType:   "Post",
-			ToEntityID:     rel.post,
-			Type:           "likes",
-			Data:           json.RawMessage(edgeData),
-		}
+		edge := graph.NewEdge(
+			graph.NewNodeRef("User", rel.user),
+			graph.NewNodeRef("Post", rel.post),
+			"likes",
+			json.RawMessage(edgeData),
+		)
 		if err := g.AddEdge(ctx, edge); err != nil {
 			t.Fatalf("failed to add like edge %s -> %s: %v", rel.user, rel.post, err)
 		}
@@ -112,14 +109,14 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 		}
 
 		// First path should be just alice.
-		if len(paths[0].Nodes) != 1 || paths[0].Nodes[0].EntityID != "alice" {
+		if len(paths[0].Nodes) != 1 || paths[0].Nodes[0].ID != "alice" {
 			t.Fatalf("first path should be alice, got %+v", paths[0])
 		}
 
 		// Check that charlie is reachable within 2 hops.
 		var foundCharlie bool
 		for _, path := range paths {
-			if len(path.Nodes) > 0 && path.Nodes[len(path.Nodes)-1].EntityID == "charlie" {
+			if len(path.Nodes) > 0 && path.Nodes[len(path.Nodes)-1].ID == "charlie" {
 				foundCharlie = true
 				if path.Depth > 2 {
 					t.Fatalf("charlie should be reachable within 2 hops, got depth %d", path.Depth)
@@ -151,12 +148,12 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 			t.Fatalf("expected 3 nodes in path, got %d", len(path.Nodes))
 		}
 
-		if path.Nodes[0].EntityID != "alice" {
-			t.Fatalf("path should start with alice, got %s", path.Nodes[0].EntityID)
+		if path.Nodes[0].ID != "alice" {
+			t.Fatalf("path should start with alice, got %s", path.Nodes[0].ID)
 		}
 
-		if path.Nodes[2].EntityID != "charlie" {
-			t.Fatalf("path should end with charlie, got %s", path.Nodes[2].EntityID)
+		if path.Nodes[2].ID != "charlie" {
+			t.Fatalf("path should end with charlie, got %s", path.Nodes[2].ID)
 		}
 	})
 
@@ -171,8 +168,8 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 			t.Fatalf("expected 1 mutual connection, got %d", len(mutual))
 		}
 
-		if mutual[0].EntityID != "charlie" {
-			t.Fatalf("expected mutual connection to be charlie, got %s", mutual[0].EntityID)
+		if mutual[0].ID != "charlie" {
+			t.Fatalf("expected mutual connection to be charlie, got %s", mutual[0].ID)
 		}
 	})
 
@@ -208,7 +205,7 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 
 		neighborIDs := make(map[string]bool)
 		for _, neighbor := range neighbors {
-			neighborIDs[neighbor.EntityID] = true
+			neighborIDs[neighbor.ID] = true
 		}
 
 		expected := []string{"bob", "diana", "post1", "post2"}
@@ -233,10 +230,10 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 		var foundPost1, foundPost2 bool
 		for _, path := range paths {
 			for _, node := range path.Nodes {
-				if node.EntityID == "post1" {
+				if node.ID == "post1" {
 					foundPost1 = true
 				}
-				if node.EntityID == "post2" {
+				if node.ID == "post2" {
 					foundPost2 = true
 				}
 			}
@@ -324,14 +321,12 @@ func TestGraphQueries(t *testing.T) {
 
 	for _, purchase := range purchases {
 		edgeData, _ := json.Marshal(map[string]any{"amount": purchase.amount})
-		edge := graph.Edge{
-			FromEntityType: "User",
-			FromEntityID:   purchase.user,
-			ToEntityType:   "Product",
-			ToEntityID:     purchase.product,
-			Type:           "bought",
-			Data:           json.RawMessage(edgeData),
-		}
+		edge := graph.NewEdge(
+			graph.NewNodeRef("User", purchase.user),
+			graph.NewNodeRef("Product", purchase.product),
+			"bought",
+			json.RawMessage(edgeData),
+		)
 		if err := g.AddEdge(ctx, edge); err != nil {
 			t.Fatalf("failed to add purchase edge: %v", err)
 		}
@@ -346,13 +341,12 @@ func TestGraphQueries(t *testing.T) {
 	}
 
 	for product, category := range productCategories {
-		edge := graph.Edge{
-			FromEntityType: "Product",
-			FromEntityID:   product,
-			ToEntityType:   "Category",
-			ToEntityID:     category,
-			Type:           "in_category",
-		}
+		edge := graph.NewEdge(
+			graph.NewNodeRef("Product", product),
+			graph.NewNodeRef("Category", category),
+			"in_category",
+			nil,
+		)
 		if err := g.AddEdge(ctx, edge); err != nil {
 			t.Fatalf("failed to add category edge: %v", err)
 		}
@@ -401,7 +395,7 @@ func TestGraphQueries(t *testing.T) {
 			t.Fatalf("expected laptop to be in 1 category, got %d", len(laptopCategories))
 		}
 
-		category := laptopCategories[0].ToEntityID
+		category := laptopCategories[0].To.ID
 
 		// Find all products in the same category.
 		var categoryProducts []graph.Edge
@@ -419,7 +413,7 @@ func TestGraphQueries(t *testing.T) {
 
 		productIDs := make(map[string]bool)
 		for _, edge := range categoryProducts {
-			productIDs[edge.FromEntityID] = true
+			productIDs[edge.From.ID] = true
 		}
 
 		if !productIDs["laptop"] || !productIDs["monitor"] {
@@ -442,7 +436,7 @@ func TestGraphQueries(t *testing.T) {
 		for _, purchase := range user1Purchases {
 			// Find who else bought this product.
 			var otherBuyers []graph.Edge
-			for edge, err := range g.GetIncoming(ctx, "Product", purchase.ToEntityID, "bought") {
+			for edge, err := range g.GetIncoming(ctx, "Product", purchase.To.ID, "bought") {
 				if err != nil {
 					t.Fatalf("failed to get other buyers: %v", err)
 				}
@@ -450,8 +444,8 @@ func TestGraphQueries(t *testing.T) {
 			}
 
 			for _, buyer := range otherBuyers {
-				if buyer.FromEntityID != "user1" { // Exclude user1 themselves
-					similarUsers[buyer.FromEntityID]++
+				if buyer.From.ID != "user1" { // Exclude user1 themselves
+					similarUsers[buyer.From.ID]++
 				}
 			}
 		}

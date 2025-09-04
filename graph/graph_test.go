@@ -66,53 +66,48 @@ func TestGraph(t *testing.T) {
 
 	t.Run("Create and retrieve edges", func(t *testing.T) {
 		// User1 follows User2.
-		followEdge := graph.Edge{
-			FromEntityType: "User",
-			FromEntityID:   "user1",
-			ToEntityType:   "User",
-			ToEntityID:     "user2",
-			Type:           "follows",
-			Data:           json.RawMessage(`{"since": "2024-01-01"}`),
-		}
+		followEdge := graph.NewEdge(
+			graph.NewNodeRef("User", "user1"),
+			graph.NewNodeRef("User", "user2"),
+			"follows",
+			json.RawMessage(`{"since": "2024-01-01"}`),
+		)
 
 		if err := g.AddEdge(ctx, followEdge); err != nil {
 			t.Fatalf("failed to add follow edge: %v", err)
 		}
 
 		// User1 authored Post1.
-		authorEdge := graph.Edge{
-			FromEntityType: "User",
-			FromEntityID:   "user1",
-			ToEntityType:   "Post",
-			ToEntityID:     "post1",
-			Type:           "authored",
-		}
+		authorEdge := graph.NewEdge(
+			graph.NewNodeRef("User", "user1"),
+			graph.NewNodeRef("Post", "post1"),
+			"authored",
+			nil,
+		)
 
 		if err := g.AddEdge(ctx, authorEdge); err != nil {
 			t.Fatalf("failed to add author edge: %v", err)
 		}
 
 		// User2 commented on Post1.
-		commentedEdge := graph.Edge{
-			FromEntityType: "User",
-			FromEntityID:   "user2",
-			ToEntityType:   "Comment",
-			ToEntityID:     "comment1",
-			Type:           "authored",
-		}
+		commentedEdge := graph.NewEdge(
+			graph.NewNodeRef("User", "user2"),
+			graph.NewNodeRef("Comment", "comment1"),
+			"authored",
+			nil,
+		)
 
 		if err := g.AddEdge(ctx, commentedEdge); err != nil {
 			t.Fatalf("failed to add commented edge: %v", err)
 		}
 
 		// Comment1 is on Post1.
-		commentOnPostEdge := graph.Edge{
-			FromEntityType: "Comment",
-			FromEntityID:   "comment1",
-			ToEntityType:   "Post",
-			ToEntityID:     "post1",
-			Type:           "on",
-		}
+		commentOnPostEdge := graph.NewEdge(
+			graph.NewNodeRef("Comment", "comment1"),
+			graph.NewNodeRef("Post", "post1"),
+			"on",
+			nil,
+		)
 
 		if err := g.AddEdge(ctx, commentOnPostEdge); err != nil {
 			t.Fatalf("failed to add comment-on-post edge: %v", err)
@@ -148,8 +143,8 @@ func TestGraph(t *testing.T) {
 		if len(followEdges) != 1 {
 			t.Fatalf("expected 1 follow edge, got %d", len(followEdges))
 		}
-		if followEdges[0].ToEntityID != "user2" {
-			t.Fatalf("expected to follow user2, got %s", followEdges[0].ToEntityID)
+		if followEdges[0].To.ID != "user2" {
+			t.Fatalf("expected to follow user2, got %s", followEdges[0].To.ID)
 		}
 
 		// Get all posts authored by user1.
@@ -163,8 +158,8 @@ func TestGraph(t *testing.T) {
 		if len(authoredEdges) != 1 {
 			t.Fatalf("expected 1 authored edge, got %d", len(authoredEdges))
 		}
-		if authoredEdges[0].ToEntityID != "post1" {
-			t.Fatalf("expected to author post1, got %s", authoredEdges[0].ToEntityID)
+		if authoredEdges[0].To.ID != "post1" {
+			t.Fatalf("expected to author post1, got %s", authoredEdges[0].To.ID)
 		}
 	})
 
@@ -180,8 +175,8 @@ func TestGraph(t *testing.T) {
 		if len(followersEdges) != 1 {
 			t.Fatalf("expected 1 follower edge, got %d", len(followersEdges))
 		}
-		if followersEdges[0].FromEntityID != "user1" {
-			t.Fatalf("expected follower to be user1, got %s", followersEdges[0].FromEntityID)
+		if followersEdges[0].From.ID != "user1" {
+			t.Fatalf("expected follower to be user1, got %s", followersEdges[0].From.ID)
 		}
 
 		// Get who authored post1.
@@ -195,8 +190,8 @@ func TestGraph(t *testing.T) {
 		if len(authorEdges) != 1 {
 			t.Fatalf("expected 1 author edge, got %d", len(authorEdges))
 		}
-		if authorEdges[0].FromEntityID != "user1" {
-			t.Fatalf("expected author to be user1, got %s", authorEdges[0].FromEntityID)
+		if authorEdges[0].From.ID != "user1" {
+			t.Fatalf("expected author to be user1, got %s", authorEdges[0].From.ID)
 		}
 	})
 
@@ -309,13 +304,12 @@ func TestGraphTraversal(t *testing.T) {
 	}
 
 	for _, rel := range relationships {
-		edge := graph.Edge{
-			FromEntityType: "User",
-			FromEntityID:   rel.from,
-			ToEntityType:   "User",
-			ToEntityID:     rel.to,
-			Type:           "follows",
-		}
+		edge := graph.NewEdge(
+			graph.NewNodeRef("User", rel.from),
+			graph.NewNodeRef("User", rel.to),
+			"follows",
+			nil,
+		)
 		if err := g.AddEdge(ctx, edge); err != nil {
 			t.Fatalf("failed to add edge %s -> %s: %v", rel.from, rel.to, err)
 		}
@@ -336,7 +330,7 @@ func TestGraphTraversal(t *testing.T) {
 
 		followingIDs := make(map[string]bool)
 		for _, edge := range following {
-			followingIDs[edge.ToEntityID] = true
+			followingIDs[edge.To.ID] = true
 		}
 
 		if !followingIDs["bob"] || !followingIDs["charlie"] {
@@ -357,8 +351,8 @@ func TestGraphTraversal(t *testing.T) {
 			t.Fatalf("expected Alice to have 1 follower, got %d", len(followers))
 		}
 
-		if followers[0].FromEntityID != "diana" {
-			t.Fatalf("expected Diana to follow Alice, got %s", followers[0].FromEntityID)
+		if followers[0].From.ID != "diana" {
+			t.Fatalf("expected Diana to follow Alice, got %s", followers[0].From.ID)
 		}
 	})
 }
@@ -381,35 +375,30 @@ func TestStreamingMethods(t *testing.T) {
 
 	// Create test edges.
 	edges := []graph.Edge{
-		{
-			FromEntityType: "User",
-			FromEntityID:   "alice",
-			ToEntityType:   "User",
-			ToEntityID:     "bob",
-			Type:           "follows",
-			Data:           json.RawMessage(`{"since": "2024-01-01"}`),
-		},
-		{
-			FromEntityType: "User",
-			FromEntityID:   "alice",
-			ToEntityType:   "Post",
-			ToEntityID:     "post1",
-			Type:           "authored",
-		},
-		{
-			FromEntityType: "User",
-			FromEntityID:   "bob",
-			ToEntityType:   "User",
-			ToEntityID:     "alice",
-			Type:           "follows",
-		},
-		{
-			FromEntityType: "User",
-			FromEntityID:   "bob",
-			ToEntityType:   "Post",
-			ToEntityID:     "post2",
-			Type:           "authored",
-		},
+		graph.NewEdge(
+			graph.NewNodeRef("User", "alice"),
+			graph.NewNodeRef("User", "bob"),
+			"follows",
+			json.RawMessage(`{"since": "2024-01-01"}`),
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("User", "alice"),
+			graph.NewNodeRef("Post", "post1"),
+			"authored",
+			nil,
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("User", "bob"),
+			graph.NewNodeRef("User", "alice"),
+			"follows",
+			nil,
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("User", "bob"),
+			graph.NewNodeRef("Post", "post2"),
+			"authored",
+			nil,
+		),
 	}
 
 	for _, edge := range edges {
@@ -438,8 +427,8 @@ func TestStreamingMethods(t *testing.T) {
 			t.Fatalf("expected 1 follow edge, got %d", len(collectedEdges))
 		}
 
-		if collectedEdges[0].ToEntityID != "bob" {
-			t.Fatalf("expected edge to bob, got %s", collectedEdges[0].ToEntityID)
+		if collectedEdges[0].To.ID != "bob" {
+			t.Fatalf("expected edge to bob, got %s", collectedEdges[0].To.ID)
 		}
 	})
 
@@ -463,8 +452,8 @@ func TestStreamingMethods(t *testing.T) {
 			t.Fatalf("expected 1 incoming follow edge, got %d", len(collectedEdges))
 		}
 
-		if collectedEdges[0].FromEntityID != "bob" {
-			t.Fatalf("expected edge from bob, got %s", collectedEdges[0].FromEntityID)
+		if collectedEdges[0].From.ID != "bob" {
+			t.Fatalf("expected edge from bob, got %s", collectedEdges[0].From.ID)
 		}
 	})
 

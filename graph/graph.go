@@ -12,19 +12,42 @@ import (
 
 // Edge represents a relationship between two entities.
 type Edge struct {
-	FromEntityType string          `json:"fromEntityType"`
-	FromEntityID   string          `json:"fromEntityID"`
-	ToEntityType   string          `json:"toEntityType"`
-	ToEntityID     string          `json:"toEntityID"`
-	Type           string          `json:"type"`
-	Data           json.RawMessage `json:"data,omitempty"`
+	From NodeRef        `json:"from"`
+	To   NodeRef        `json:"to"`
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// NodeRef represents a reference to a node in the graph.
+type NodeRef struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
+// Key returns a unique string key for this node reference.
+func (n NodeRef) Key() string {
+	return fmt.Sprintf("%s:%s", n.Type, n.ID)
+}
+
+// NewNodeRef creates a new NodeRef with the given type and ID.
+func NewNodeRef(nodeType, id string) NodeRef {
+	return NodeRef{Type: nodeType, ID: id}
+}
+
+// NewEdge creates a new Edge with the given parameters.
+func NewEdge(from, to NodeRef, edgeType string, data json.RawMessage) Edge {
+	return Edge{
+		From: from,
+		To:   to,
+		Type: edgeType,
+		Data: data,
+	}
 }
 
 // EdgeRef is a lightweight reference to an edge, stored as individual keys.
 type EdgeRef struct {
-	EntityType string `json:"entityType"`
-	EntityID   string `json:"entityID"`
-	EdgeType   string `json:"edgeType"`
+	Node     NodeRef `json:"node"`
+	EdgeType string  `json:"edgeType"`
 }
 
 // Graph provides graph operations on top of a KV store.
@@ -74,29 +97,27 @@ func NewWithConfig(store kv.Store, batchSize, maxTraversalNodes int) *Graph {
 
 // AddEdge creates a directed edge from one entity to another.
 func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
-	if edge.FromEntityType == "" || edge.FromEntityID == "" || edge.ToEntityType == "" || edge.ToEntityID == "" || edge.Type == "" {
+	if edge.From.Type == "" || edge.From.ID == "" || edge.To.Type == "" || edge.To.ID == "" || edge.Type == "" {
 		return fmt.Errorf("edge fields cannot be empty")
 	}
 
 	// Store the edge itself.
-	edgeKey := edgeKey(edge.FromEntityType, edge.FromEntityID, edge.Type, edge.ToEntityType, edge.ToEntityID)
+	edgeKey := edgeKey(edge.From.Type, edge.From.ID, edge.Type, edge.To.Type, edge.To.ID)
 
 	// Store outgoing edge reference.
-	outgoingRefKey := outgoingEdgeRefKey(edge.FromEntityType, edge.FromEntityID, edge.Type, edge.ToEntityType, edge.ToEntityID)
+	outgoingRefKey := outgoingEdgeRefKey(edge.From.Type, edge.From.ID, edge.Type, edge.To.Type, edge.To.ID)
 
 	// Store incoming edge reference.
-	incomingRefKey := incomingEdgeRefKey(edge.ToEntityType, edge.ToEntityID, edge.Type, edge.FromEntityType, edge.FromEntityID)
+	incomingRefKey := incomingEdgeRefKey(edge.To.Type, edge.To.ID, edge.Type, edge.From.Type, edge.From.ID)
 
 	edgeRef := EdgeRef{
-		EntityType: edge.ToEntityType,
-		EntityID:   edge.ToEntityID,
-		EdgeType:   edge.Type,
+		Node:     edge.To,
+		EdgeType: edge.Type,
 	}
 
 	incomingEdgeRef := EdgeRef{
-		EntityType: edge.FromEntityType,
-		EntityID:   edge.FromEntityID,
-		EdgeType:   edge.Type,
+		Node:     edge.From,
+		EdgeType: edge.Type,
 	}
 
 	mutations := []kv.Mutation{
@@ -175,7 +196,7 @@ func (g *Graph) GetOutgoing(ctx context.Context, entityType, entityID, edgeType 
 			}
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(entityType, entityID, actualEdgeType, edgeRef.EntityType, edgeRef.EntityID)
+			edgeKey := edgeKey(entityType, entityID, actualEdgeType, edgeRef.Node.Type, edgeRef.Node.ID)
 			edgeKeys = append(edgeKeys, edgeKey)
 			edgeRefs = append(edgeRefs, edgeRef)
 
@@ -236,7 +257,7 @@ func (g *Graph) GetIncoming(ctx context.Context, entityType, entityID, edgeType 
 			}
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(edgeRef.EntityType, edgeRef.EntityID, actualEdgeType, entityType, entityID)
+			edgeKey := edgeKey(edgeRef.Node.Type, edgeRef.Node.ID, actualEdgeType, entityType, entityID)
 			edgeKeys = append(edgeKeys, edgeKey)
 
 			// Process batch when we reach the paginator limit.
@@ -284,7 +305,7 @@ func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string)
 			edgeType := extractEdgeTypeFromKey(record.Key)
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(entityType, entityID, edgeType, edgeRef.EntityType, edgeRef.EntityID)
+			edgeKey := edgeKey(entityType, entityID, edgeType, edgeRef.Node.Type, edgeRef.Node.ID)
 			edgeKeys = append(edgeKeys, edgeKey)
 
 			// Process batch when we reach the paginator limit.
@@ -332,7 +353,7 @@ func (g *Graph) GetAllIncoming(ctx context.Context, entityType, entityID string)
 			edgeType := extractEdgeTypeFromKey(record.Key)
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(edgeRef.EntityType, edgeRef.EntityID, edgeType, entityType, entityID)
+			edgeKey := edgeKey(edgeRef.Node.Type, edgeRef.Node.ID, edgeType, entityType, entityID)
 			edgeKeys = append(edgeKeys, edgeKey)
 
 			// Process batch when we reach the paginator limit.

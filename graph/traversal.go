@@ -21,12 +21,6 @@ type Path struct {
 	Depth int       `json:"depth"`
 }
 
-// NodeRef represents a reference to a graph node.
-type NodeRef struct {
-	EntityType string `json:"entityType"`
-	EntityID   string `json:"entityID"`
-}
-
 // BreadthFirstSearch performs BFS traversal from a starting node.
 func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEntityID string, opts TraversalOptions) ([]Path, error) {
 	if startEntityType == "" || startEntityID == "" {
@@ -42,12 +36,12 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 	var paths []Path
 	visited := make(map[string]bool)
 	queue := []Path{{
-		Nodes: []NodeRef{{EntityType: startEntityType, EntityID: startEntityID}},
+		Nodes: []NodeRef{{Type: startEntityType, ID: startEntityID}},
 		Edges: []Edge{},
 		Depth: 0,
 	}}
 
-	visited[nodeKey(startEntityType, startEntityID)] = true
+	visited[NewNodeRef(startEntityType, startEntityID).Key()] = true
 	nodesVisited := 1 // Track for observability
 
 	for len(queue) > 0 && (opts.VisitLimit == 0 || len(paths) < opts.VisitLimit) {
@@ -71,7 +65,7 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 		var edges []Edge
 
 		if len(opts.EdgeTypes) == 0 {
-			for edge, err := range g.GetAllOutgoing(ctx, currentNode.EntityType, currentNode.EntityID) {
+			for edge, err := range g.GetAllOutgoing(ctx, currentNode.Type, currentNode.ID) {
 				if err != nil {
 					return nil, err
 				}
@@ -79,7 +73,7 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 			}
 		} else {
 			for _, edgeType := range opts.EdgeTypes {
-				for edge, err := range g.GetOutgoing(ctx, currentNode.EntityType, currentNode.EntityID, edgeType) {
+				for edge, err := range g.GetOutgoing(ctx, currentNode.Type, currentNode.ID, edgeType) {
 					if err != nil {
 						return nil, err
 					}
@@ -93,16 +87,13 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 
 		// Add unvisited neighbors to queue.
 		for _, edge := range edges {
-			neighborKey := nodeKey(edge.ToEntityType, edge.ToEntityID)
+			neighborKey := edge.To.Key()
 			if !visited[neighborKey] {
 				visited[neighborKey] = true
 				nodesVisited++
 
 				newPath := Path{
-					Nodes: append(currentPath.Nodes, NodeRef{
-						EntityType: edge.ToEntityType,
-						EntityID:   edge.ToEntityID,
-					}),
+					Nodes: append(currentPath.Nodes, edge.To),
 					Edges: append(currentPath.Edges, edge),
 					Depth: currentPath.Depth + 1,
 				}
@@ -124,15 +115,15 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 		return nil, fmt.Errorf("max depth cannot be negative")
 	}
 
-	targetKey := nodeKey(toEntityType, toEntityID)
+	targetKey := NewNodeRef(toEntityType, toEntityID).Key()
 	visited := make(map[string]bool)
 	queue := []Path{{
-		Nodes: []NodeRef{{EntityType: fromEntityType, EntityID: fromEntityID}},
+		Nodes: []NodeRef{{Type: fromEntityType, ID: fromEntityID}},
 		Edges: []Edge{},
 		Depth: 0,
 	}}
 
-	visited[nodeKey(fromEntityType, fromEntityID)] = true
+	visited[NewNodeRef(fromEntityType, fromEntityID).Key()] = true
 	nodesVisited := 1 // Track for observability
 
 	for len(queue) > 0 {
@@ -145,7 +136,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 		queue = queue[1:]
 
 		currentNode := currentPath.Nodes[len(currentPath.Nodes)-1]
-		currentKey := nodeKey(currentNode.EntityType, currentNode.EntityID)
+		currentKey := currentNode.Key()
 
 		// Check if we've reached the target.
 		if currentKey == targetKey {
@@ -161,7 +152,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 		var edges []Edge
 
 		if len(opts.EdgeTypes) == 0 {
-			for edge, err := range g.GetAllOutgoing(ctx, currentNode.EntityType, currentNode.EntityID) {
+			for edge, err := range g.GetAllOutgoing(ctx, currentNode.Type, currentNode.ID) {
 				if err != nil {
 					return nil, err
 				}
@@ -169,7 +160,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 			}
 		} else {
 			for _, edgeType := range opts.EdgeTypes {
-				for edge, err := range g.GetOutgoing(ctx, currentNode.EntityType, currentNode.EntityID, edgeType) {
+				for edge, err := range g.GetOutgoing(ctx, currentNode.Type, currentNode.ID, edgeType) {
 					if err != nil {
 						return nil, err
 					}
@@ -183,16 +174,13 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 
 		// Add unvisited neighbors to queue.
 		for _, edge := range edges {
-			neighborKey := nodeKey(edge.ToEntityType, edge.ToEntityID)
+			neighborKey := edge.To.Key()
 			if !visited[neighborKey] {
 				visited[neighborKey] = true
 				nodesVisited++
 
 				newPath := Path{
-					Nodes: append(currentPath.Nodes, NodeRef{
-						EntityType: edge.ToEntityType,
-						EntityID:   edge.ToEntityID,
-					}),
+					Nodes: append(currentPath.Nodes, edge.To),
 					Edges: append(currentPath.Edges, edge),
 					Depth: currentPath.Depth + 1,
 				}
@@ -228,16 +216,13 @@ func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1I
 	// Find intersection.
 	connected1 := make(map[string]NodeRef)
 	for _, edge := range edges1 {
-		key := nodeKey(edge.ToEntityType, edge.ToEntityID)
-		connected1[key] = NodeRef{
-			EntityType: edge.ToEntityType,
-			EntityID:   edge.ToEntityID,
-		}
+		key := edge.To.Key()
+		connected1[key] = edge.To
 	}
 
 	var mutual []NodeRef
 	for _, edge := range edges2 {
-		key := nodeKey(edge.ToEntityType, edge.ToEntityID)
+		key := edge.To.Key()
 		if node, exists := connected1[key]; exists {
 			mutual = append(mutual, node)
 		}
@@ -292,11 +277,8 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 
 	outgoingEdges = g.filterEdgesByProperties(outgoingEdges, opts.Properties)
 	for _, edge := range outgoingEdges {
-		key := nodeKey(edge.ToEntityType, edge.ToEntityID)
-		neighbors[key] = NodeRef{
-			EntityType: edge.ToEntityType,
-			EntityID:   edge.ToEntityID,
-		}
+		key := edge.To.Key()
+		neighbors[key] = edge.To
 	}
 
 	// Get incoming neighbors.
@@ -322,11 +304,8 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 
 	incomingEdges = g.filterEdgesByProperties(incomingEdges, opts.Properties)
 	for _, edge := range incomingEdges {
-		key := nodeKey(edge.FromEntityType, edge.FromEntityID)
-		neighbors[key] = NodeRef{
-			EntityType: edge.FromEntityType,
-			EntityID:   edge.FromEntityID,
-		}
+		key := edge.From.Key()
+		neighbors[key] = edge.From
 	}
 
 	// Convert map to slice.
@@ -339,10 +318,6 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 }
 
 // Helper functions.
-
-func nodeKey(entityType, entityID string) string {
-	return fmt.Sprintf("%s:%s", entityType, entityID)
-}
 
 func (g *Graph) filterEdgesByProperties(edges []Edge, properties map[string]any) []Edge {
 	if len(properties) == 0 {
