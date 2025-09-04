@@ -12,7 +12,7 @@ import (
 type GraphGetOutgoingCommand struct {
 	EntityType string `arg:"" help:"Entity type"`
 	EntityID   string `arg:"" help:"Entity ID"`
-	EdgeType   string `arg:"" help:"Edge type (or '*' for all types)"`
+	EdgeType   string `arg:"" help:"Edge type" default:"*"`
 }
 
 func (c *GraphGetOutgoingCommand) Run(ctx context.Context, g GlobalFlags) error {

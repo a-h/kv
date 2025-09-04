@@ -15,7 +15,7 @@ type GraphViewCommand struct {
 	EntityID   string `arg:"" help:"Entity ID to visualize (or '*' for all entities of the type)" optional:""`
 	Format     string `help:"Output format: dot, mermaid" default:"dot"`
 	MaxDepth   int    `help:"Maximum depth for traversal (0 for unlimited)" default:"2"`
-	EdgeType   string `help:"Edge type filter (or '*' for all types)" default:"*"`
+	EdgeType   string `help:"Edge type filter" default:"*"`
 }
 
 func (c *GraphViewCommand) Run(ctx context.Context, g GlobalFlags) error {
