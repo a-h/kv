@@ -38,7 +38,7 @@ func (c *GraphGetOutgoingCommand) Run(ctx context.Context, g GlobalFlags) error 
 		if err != nil {
 			return fmt.Errorf("failed to get outgoing edges: %w", err)
 		}
-		
+
 		output, err := json.MarshalIndent(edge, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal edge: %w", err)

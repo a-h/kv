@@ -159,11 +159,11 @@ func (c *GraphViewCommand) getEdgeIterator(ctx context.Context, gr *graph.Graph)
 			return gr.All(ctx)
 		}, nil
 	}
-	
+
 	if c.EntityID == "" || c.EntityID == "*" {
 		return nil, fmt.Errorf("getting all entities of a type is not yet supported - please specify both entity type and ID, or use '*' for both")
 	}
-	
+
 	node := graph.NewNodeRef(c.EntityType, c.EntityID)
 	return func() iter.Seq2[graph.Edge, error] {
 		return func(yield func(graph.Edge, error) bool) {
@@ -177,7 +177,7 @@ func (c *GraphViewCommand) getEdgeIterator(ctx context.Context, gr *graph.Graph)
 					return
 				}
 			}
-			
+
 			// Stream incoming edges for visualization.
 			for edge, err := range gr.GetIncoming(ctx, node, c.EdgeType) {
 				if err != nil {
