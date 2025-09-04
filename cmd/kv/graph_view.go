@@ -164,7 +164,7 @@ func (c *GraphViewCommand) getEdgeIterator(ctx context.Context, gr *graph.Graph)
 		return nil, fmt.Errorf("getting all entities of a type is not yet supported - please specify both entity type and ID, or use '*' for both")
 	}
 
-	node := graph.NewNodeRef(c.EntityType, c.EntityID)
+	node := graph.NewNodeRef(c.EntityID, c.EntityType)
 	return func() iter.Seq2[graph.Edge, error] {
 		return func(yield func(graph.Edge, error) bool) {
 			// Stream outgoing edges.

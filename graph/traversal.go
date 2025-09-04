@@ -44,7 +44,7 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 		Depth: 0,
 	}}
 
-	visited[NewNodeRef(startEntityType, startEntityID).Key()] = true
+	visited[NewNodeRef(startEntityID, startEntityType).Key()] = true
 	nodesVisited := 1 // Track for observability
 
 	for len(queue) > 0 && (opts.VisitLimit == 0 || len(paths) < opts.VisitLimit) {
@@ -126,7 +126,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 		return nil, fmt.Errorf("max depth cannot be negative")
 	}
 
-	targetKey := NewNodeRef(toEntityType, toEntityID).Key()
+	targetKey := NewNodeRef(toEntityID, toEntityType).Key()
 	visited := make(map[string]bool)
 	queue := []Path{{
 		Nodes: []NodeRef{{Type: fromEntityType, ID: fromEntityID}},
@@ -134,7 +134,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 		Depth: 0,
 	}}
 
-	visited[NewNodeRef(fromEntityType, fromEntityID).Key()] = true
+	visited[NewNodeRef(fromEntityID, fromEntityType).Key()] = true
 	nodesVisited := 1 // Track for observability
 
 	for len(queue) > 0 {
@@ -214,8 +214,8 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 
 // FindMutualConnections finds entities that are connected to both given entities.
 func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1ID, entity2Type, entity2ID, connectionType string) ([]NodeRef, error) {
-	entity1 := NewNodeRef(entity1Type, entity1ID)
-	entity2 := NewNodeRef(entity2Type, entity2ID)
+	entity1 := NewNodeRef(entity1ID, entity1Type)
+	entity2 := NewNodeRef(entity2ID, entity2Type)
 
 	// Get all entities that entity1 connects to.
 	var edges1 []Edge
@@ -255,7 +255,7 @@ func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1I
 
 // GetDegree returns the in-degree and out-degree of a node for a specific edge type.
 func (g *Graph) GetDegree(ctx context.Context, entityType, entityID, edgeType string) (inDegree, outDegree int, err error) {
-	node := NewNodeRef(entityType, entityID)
+	node := NewNodeRef(entityID, entityType)
 
 	for _, err := range g.GetOutgoing(ctx, node, edgeType) {
 		if err != nil {
@@ -276,7 +276,7 @@ func (g *Graph) GetDegree(ctx context.Context, entityType, entityID, edgeType st
 
 // GetNeighbors returns all neighbors (both incoming and outgoing) of a node.
 func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, opts TraversalOptions) ([]NodeRef, error) {
-	node := NewNodeRef(entityType, entityID)
+	node := NewNodeRef(entityID, entityType)
 	neighbors := make(map[string]NodeRef)
 
 	// Get outgoing neighbors - stream directly without collecting.

@@ -114,47 +114,47 @@ func run() error {
 	relationships := []graph.Edge{
 		// Team memberships.
 		graph.NewEdge(
-			graph.NewNodeRef("Player", "player1"),
-			graph.NewNodeRef("Team", "team1"),
+			graph.NewNodeRef("player1", "Player"),
+			graph.NewNodeRef("team1", "Team"),
 			"member_of",
 			nil,
 		),
 		graph.NewEdge(
-			graph.NewNodeRef("Player", "player2"),
-			graph.NewNodeRef("Team", "team1"),
+			graph.NewNodeRef("player2", "Player"),
+			graph.NewNodeRef("team1", "Team"),
 			"member_of",
 			nil,
 		),
 		// Guild memberships.
 		graph.NewEdge(
-			graph.NewNodeRef("Player", "player1"),
-			graph.NewNodeRef("Guild", "guild1"),
+			graph.NewNodeRef("player1", "Player"),
+			graph.NewNodeRef("guild1", "Guild"),
 			"member_of",
 			nil,
 		),
 		graph.NewEdge(
-			graph.NewNodeRef("Player", "player3"),
-			graph.NewNodeRef("Guild", "guild1"),
+			graph.NewNodeRef("player3", "Player"),
+			graph.NewNodeRef("guild1", "Guild"),
 			"member_of",
 			nil,
 		),
 		// Friendships.
 		graph.NewEdge(
-			graph.NewNodeRef("Player", "player1"),
-			graph.NewNodeRef("Player", "player2"),
+			graph.NewNodeRef("player1", "Player"),
+			graph.NewNodeRef("player2", "Player"),
 			"friends_with",
 			json.RawMessage(`{"since": "2024-01-01"}`),
 		),
 		graph.NewEdge(
-			graph.NewNodeRef("Player", "player2"),
-			graph.NewNodeRef("Player", "player1"),
+			graph.NewNodeRef("player2", "Player"),
+			graph.NewNodeRef("player1", "Player"),
 			"friends_with",
 			json.RawMessage(`{"since": "2024-01-01"}`),
 		),
 		// Rivalries.
 		graph.NewEdge(
-			graph.NewNodeRef("Player", "player1"),
-			graph.NewNodeRef("Player", "player3"),
+			graph.NewNodeRef("player1", "Player"),
+			graph.NewNodeRef("player3", "Player"),
 			"rival_of",
 			json.RawMessage(`{"intensity": 7}`),
 		),
@@ -172,7 +172,7 @@ func run() error {
 	// 1. Get all team members and their components.
 	fmt.Println("\n1. Team Red Team members and their stats:")
 	var teamMembers []graph.Edge
-	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Team", "team1"), "member_of") {
+	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("team1", "Team"), "member_of") {
 		if err != nil {
 			return fmt.Errorf("failed to get team members: %w", err)
 		}
@@ -213,7 +213,7 @@ func run() error {
 	// 2. Find players who are friends and check if they're close in position.
 	fmt.Println("\n2. Friend proximity analysis:")
 	var friendships []graph.Edge
-	for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("Player", "player1"), "friends_with") {
+	for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("player1", "Player"), "friends_with") {
 		if err != nil {
 			return fmt.Errorf("failed to get friendships: %w", err)
 		}
@@ -241,7 +241,7 @@ func run() error {
 	// 3. Find guild members who might form alliances (not rivals).
 	fmt.Println("\n3. Potential guild alliances:")
 	var guildMembers []graph.Edge
-	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Guild", "guild1"), "member_of") {
+	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("guild1", "Guild"), "member_of") {
 		if err != nil {
 			return fmt.Errorf("failed to get guild members: %w", err)
 		}
@@ -258,8 +258,8 @@ func run() error {
 			player2ID := member2.From.ID
 
 			// Check if they're rivals.
-			player1Node := graph.NewNodeRef("Player", player1ID)
-			player2Node := graph.NewNodeRef("Player", player2ID)
+			player1Node := graph.NewNodeRef(player1ID, "Player")
+			player2Node := graph.NewNodeRef(player2ID, "Player")
 			_, isRival, err := g.GetEdge(ctx, player1Node, "rival_of", player2Node)
 			if err != nil {
 				continue
@@ -300,7 +300,7 @@ func run() error {
 
 		// Team bonus - get team members and add team size bonus.
 		var playerTeams []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("Player", playerID), "member_of") {
+		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef(playerID, "Player"), "member_of") {
 			if err == nil {
 				playerTeams = append(playerTeams, edge)
 			}
@@ -310,7 +310,7 @@ func run() error {
 				if teamEdge.To.Type == "Team" {
 					// Count team members.
 					var teamMembers []graph.Edge
-					for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Team", teamEdge.To.ID), "member_of") {
+					for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef(teamEdge.To.ID, "Team"), "member_of") {
 						if err == nil {
 							teamMembers = append(teamMembers, edge)
 						}

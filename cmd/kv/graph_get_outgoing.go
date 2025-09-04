@@ -23,7 +23,7 @@ func (c *GraphGetOutgoingCommand) Run(ctx context.Context, g GlobalFlags) error 
 
 	gr := graph.New(store)
 
-	node := graph.NewNodeRef(c.EntityType, c.EntityID)
+	node := graph.NewNodeRef(c.EntityID, c.EntityType)
 
 	// Get the appropriate edge iterator based on edge type.
 	var edgeIterator iter.Seq2[graph.Edge, error]

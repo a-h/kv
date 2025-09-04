@@ -23,8 +23,8 @@ func (c *GraphRemoveEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 
 	gr := graph.New(store)
 
-	from := graph.NewNodeRef(c.FromType, c.FromID)
-	to := graph.NewNodeRef(c.ToType, c.ToID)
+	from := graph.NewNodeRef(c.FromID, c.FromType)
+	to := graph.NewNodeRef(c.ToID, c.ToType)
 
 	if err := gr.RemoveEdge(ctx, from, c.EdgeType, to); err != nil {
 		return fmt.Errorf("failed to remove edge: %w", err)

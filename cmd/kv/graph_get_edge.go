@@ -24,8 +24,8 @@ func (c *GraphGetEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 
 	gr := graph.New(store)
 
-	from := graph.NewNodeRef(c.FromType, c.FromID)
-	to := graph.NewNodeRef(c.ToType, c.ToID)
+	from := graph.NewNodeRef(c.FromID, c.FromType)
+	to := graph.NewNodeRef(c.ToID, c.ToType)
 
 	edge, exists, err := gr.GetEdge(ctx, from, c.EdgeType, to)
 	if err != nil {

@@ -61,8 +61,8 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 
 	for _, rel := range followRelationships {
 		edge := graph.NewEdge(
-			graph.NewNodeRef("User", rel.from),
-			graph.NewNodeRef("User", rel.to),
+			graph.NewNodeRef(rel.from, "User"),
+			graph.NewNodeRef(rel.to, "User"),
 			"follows",
 			nil,
 		)
@@ -84,8 +84,8 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 	for _, rel := range likeRelationships {
 		edgeData, _ := json.Marshal(map[string]any{"score": rel.score})
 		edge := graph.NewEdge(
-			graph.NewNodeRef("User", rel.user),
-			graph.NewNodeRef("Post", rel.post),
+			graph.NewNodeRef(rel.user, "User"),
+			graph.NewNodeRef(rel.post, "Post"),
 			"likes",
 			json.RawMessage(edgeData),
 		)
@@ -336,8 +336,8 @@ func TestGraphQueries(t *testing.T) {
 	for _, purchase := range purchases {
 		edgeData, _ := json.Marshal(map[string]any{"amount": purchase.amount})
 		edge := graph.NewEdge(
-			graph.NewNodeRef("User", purchase.user),
-			graph.NewNodeRef("Product", purchase.product),
+			graph.NewNodeRef(purchase.user, "User"),
+			graph.NewNodeRef(purchase.product, "Product"),
 			"bought",
 			json.RawMessage(edgeData),
 		)
@@ -356,8 +356,8 @@ func TestGraphQueries(t *testing.T) {
 
 	for product, category := range productCategories {
 		edge := graph.NewEdge(
-			graph.NewNodeRef("Product", product),
-			graph.NewNodeRef("Category", category),
+			graph.NewNodeRef(product, "Product"),
+			graph.NewNodeRef(category, "Category"),
 			"in_category",
 			nil,
 		)
@@ -397,7 +397,7 @@ func TestGraphQueries(t *testing.T) {
 	t.Run("Find products in same category", func(t *testing.T) {
 		// Find what category laptop is in.
 		var laptopCategories []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("Product", "laptop"), "in_category") {
+		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("laptop", "Product"), "in_category") {
 			if err != nil {
 				t.Fatalf("failed to get laptop categories: %v", err)
 			}
@@ -412,7 +412,7 @@ func TestGraphQueries(t *testing.T) {
 
 		// Find all products in the same category.
 		var categoryProducts []graph.Edge
-		for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Category", category), "in_category") {
+		for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef(category, "Category"), "in_category") {
 			if err != nil {
 				t.Fatalf("failed to get products in category: %v", err)
 			}
@@ -437,7 +437,7 @@ func TestGraphQueries(t *testing.T) {
 	t.Run("Find similar users", func(t *testing.T) {
 		// Find users who bought the same product as user1.
 		var user1Purchases []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("User", "user1"), "bought") {
+		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("user1", "User"), "bought") {
 			if err != nil {
 				t.Fatalf("failed to get user1 purchases: %v", err)
 			}
@@ -449,7 +449,7 @@ func TestGraphQueries(t *testing.T) {
 		for _, purchase := range user1Purchases {
 			// Find who else bought this product.
 			var otherBuyers []graph.Edge
-			for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Product", purchase.To.ID), "bought") {
+			for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef(purchase.To.ID, "Product"), "bought") {
 				if err != nil {
 					t.Fatalf("failed to get other buyers: %v", err)
 				}

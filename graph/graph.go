@@ -26,8 +26,8 @@ func (e Edge) Key() string {
 
 // NodeRef represents a reference to a node in the graph.
 type NodeRef struct {
-	Type string `json:"type"`
 	ID   string `json:"id"`
+	Type string `json:"type"`
 }
 
 // Key returns a unique string key for this node reference.
@@ -36,8 +36,8 @@ func (n NodeRef) Key() string {
 }
 
 // NewNodeRef creates a new NodeRef with the given type and ID.
-func NewNodeRef(nodeType, id string) NodeRef {
-	return NodeRef{Type: nodeType, ID: id}
+func NewNodeRef(id, nodeType string) NodeRef {
+	return NodeRef{ID: id, Type: nodeType}
 }
 
 // NewEdge creates a new Edge with the given parameters.

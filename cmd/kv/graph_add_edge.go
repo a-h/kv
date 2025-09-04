@@ -31,8 +31,8 @@ func (c *GraphAddEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 	gr := graph.New(store)
 
 	edge := graph.NewEdge(
-		graph.NewNodeRef(c.FromType, c.FromID),
-		graph.NewNodeRef(c.ToType, c.ToID),
+		graph.NewNodeRef(c.ToID, c.ToType),
+		graph.NewNodeRef(c.FromID, c.FromType),
 		c.EdgeType,
 		nil,
 	)
