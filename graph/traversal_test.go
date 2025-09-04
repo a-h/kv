@@ -217,10 +217,24 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 	})
 
 	t.Run("FilterByProperties", func(t *testing.T) {
+		scoreFilter := func(edge graph.Edge) bool {
+			if len(edge.Data) == 0 {
+				return false
+			}
+			var data map[string]any
+			if err := json.Unmarshal(edge.Data, &data); err != nil {
+				return false
+			}
+			if score, ok := data["score"].(float64); ok {
+				return score == 5.0 // JSON marshaling converts int to float64
+			}
+			return false
+		}
+
 		paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
-			MaxDepth:   1,
-			EdgeTypes:  []string{"likes"},
-			Properties: map[string]any{"score": 5.0}, // JSON marshaling converts int to float64
+			MaxDepth:  1,
+			EdgeTypes: []string{"likes"},
+			Filter:    scoreFilter,
 		})
 		if err != nil {
 			t.Fatalf("failed to perform BFS with property filter: %v", err)
@@ -355,9 +369,8 @@ func TestGraphQueries(t *testing.T) {
 	t.Run("Find users who bought expensive items", func(t *testing.T) {
 		// Find all purchase edges with amount > 100.
 		paths, err := g.BreadthFirstSearch(ctx, "User", "user1", graph.TraversalOptions{
-			MaxDepth:   1,
-			EdgeTypes:  []string{"bought"},
-			Properties: map[string]any{}, // We'll filter manually for range
+			MaxDepth:  1,
+			EdgeTypes: []string{"bought"},
 		})
 		if err != nil {
 			t.Fatalf("failed to find purchases: %v", err)

@@ -579,3 +579,147 @@ func TestStreamingMethods(t *testing.T) {
 		}
 	})
 }
+
+func TestFunctionBasedFiltering(t *testing.T) {
+	ctx := context.Background()
+
+	pool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	store := sqlitekv.NewStore(pool)
+	if err := store.Init(ctx); err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	g := graph.New(store)
+
+	// Create test edges with different scores.
+	edges := []graph.Edge{
+		graph.NewEdge(
+			graph.NewNodeRef("User", "alice"),
+			graph.NewNodeRef("Post", "post1"),
+			"likes",
+			json.RawMessage(`{"score": 10}`),
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("User", "alice"),
+			graph.NewNodeRef("Post", "post2"),
+			"likes",
+			json.RawMessage(`{"score": 3}`),
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("User", "alice"),
+			graph.NewNodeRef("Post", "post3"),
+			"likes",
+			json.RawMessage(`{"score": 8}`),
+		),
+		graph.NewEdge(
+			graph.NewNodeRef("User", "alice"),
+			graph.NewNodeRef("Post", "post4"),
+			"likes",
+			nil, // No data
+		),
+	}
+
+	for _, edge := range edges {
+		if err := g.AddEdge(ctx, edge); err != nil {
+			t.Fatalf("failed to add edge: %v", err)
+		}
+	}
+
+	t.Run("filters edges by custom function", func(t *testing.T) {
+		// Filter for edges with score > 5.
+		scoreFilter := func(edge graph.Edge) bool {
+			if len(edge.Data) == 0 {
+				return false
+			}
+			var data map[string]any
+			if err := json.Unmarshal(edge.Data, &data); err != nil {
+				return false
+			}
+			score, ok := data["score"]
+			if !ok {
+				return false
+			}
+			if scoreVal, ok := score.(float64); ok {
+				return scoreVal > 5
+			}
+			return false
+		}
+
+		paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
+			EdgeTypes: []string{"likes"},
+			Filter:    scoreFilter,
+			MaxDepth:  1,
+		})
+		if err != nil {
+			t.Fatalf("failed to perform BFS with filter: %v", err)
+		}
+
+		// Should find 2 posts (post1 with score 10, post3 with score 8).
+		if len(paths) != 3 { // 1 for alice + 2 for filtered posts
+			t.Fatalf("expected 3 paths (alice + 2 posts), got %d", len(paths))
+		}
+
+		// Check that only high-score posts are in the paths.
+		highScorePosts := make(map[string]bool)
+		for _, path := range paths {
+			if path.Depth == 1 { // Posts are at depth 1
+				postID := path.Nodes[1].ID
+				highScorePosts[postID] = true
+			}
+		}
+
+		if len(highScorePosts) != 2 {
+			t.Fatalf("expected 2 high-score posts, got %d", len(highScorePosts))
+		}
+
+		if !highScorePosts["post1"] || !highScorePosts["post3"] {
+			t.Fatalf("expected post1 and post3 to be in results, got %v", highScorePosts)
+		}
+	})
+
+	t.Run("combines score and target filtering", func(t *testing.T) {
+		// Use function filtering that combines both score and target filtering.
+		combinedFilter := func(edge graph.Edge) bool {
+			// Check score = 10.
+			if len(edge.Data) == 0 {
+				return false
+			}
+			var data map[string]any
+			if err := json.Unmarshal(edge.Data, &data); err != nil {
+				return false
+			}
+			score, ok := data["score"].(float64)
+			if !ok || score != 10 {
+				return false
+			}
+			// Only allow edges to post1 or post3.
+			return edge.To.ID == "post1" || edge.To.ID == "post3"
+		}
+
+		paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
+			EdgeTypes: []string{"likes"},
+			Filter:    combinedFilter,
+			MaxDepth:  1,
+		})
+		if err != nil {
+			t.Fatalf("failed to perform BFS with combined filters: %v", err)
+		}
+
+		// Should find only post1 (score=10 AND allowed by custom filter).
+		foundPosts := make(map[string]bool)
+		for _, path := range paths {
+			if path.Depth == 1 {
+				foundPosts[path.Nodes[1].ID] = true
+			}
+		}
+
+		if len(foundPosts) != 1 || !foundPosts["post1"] {
+			t.Fatalf("expected only post1, got %v", foundPosts)
+		}
+	})
+}

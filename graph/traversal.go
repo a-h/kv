@@ -2,16 +2,19 @@ package graph
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 )
 
+// EdgeFilter is a function that determines if an edge should be included in traversal.
+// It receives the edge and returns true if the edge should be included.
+type EdgeFilter func(edge Edge) (include bool)
+
 // TraversalOptions configure graph traversal behavior.
 type TraversalOptions struct {
-	MaxDepth   int            // Maximum depth to traverse (0 = unlimited)
-	EdgeTypes  []string       // Filter by specific edge types
-	VisitLimit int            // Maximum nodes to visit (0 = unlimited)
-	Properties map[string]any // Filter edges by properties
+	MaxDepth   int        // Maximum depth to traverse (0 = unlimited)
+	EdgeTypes  []string   // Filter by specific edge types
+	VisitLimit int        // Maximum nodes to visit (0 = unlimited)
+	Filter     EdgeFilter // Custom filter function for advanced filtering
 }
 
 // Path represents a path through the graph.
@@ -82,8 +85,8 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 			}
 		}
 
-		// Filter edges by properties if specified.
-		edges = g.filterEdgesByProperties(edges, opts.Properties)
+		// Filter edges by custom function if specified.
+		edges = g.filterEdges(edges, opts.Filter)
 
 		// Add unvisited neighbors to queue.
 		for _, edge := range edges {
@@ -169,8 +172,8 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 			}
 		}
 
-		// Filter edges by properties if specified.
-		edges = g.filterEdgesByProperties(edges, opts.Properties)
+		// Filter edges by custom function if specified.
+		edges = g.filterEdges(edges, opts.Filter)
 
 		// Add unvisited neighbors to queue.
 		for _, edge := range edges {
@@ -197,7 +200,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1ID, entity2Type, entity2ID, connectionType string) ([]NodeRef, error) {
 	entity1 := NewNodeRef(entity1Type, entity1ID)
 	entity2 := NewNodeRef(entity2Type, entity2ID)
-	
+
 	// Get all entities that entity1 connects to.
 	var edges1 []Edge
 	for edge, err := range g.GetOutgoing(ctx, entity1, connectionType) {
@@ -237,7 +240,7 @@ func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1I
 // GetDegree returns the in-degree and out-degree of a node for a specific edge type.
 func (g *Graph) GetDegree(ctx context.Context, entityType, entityID, edgeType string) (inDegree, outDegree int, err error) {
 	node := NewNodeRef(entityType, entityID)
-	
+
 	for _, err := range g.GetOutgoing(ctx, node, edgeType) {
 		if err != nil {
 			return 0, 0, err
@@ -281,7 +284,7 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 		}
 	}
 
-	outgoingEdges = g.filterEdgesByProperties(outgoingEdges, opts.Properties)
+	outgoingEdges = g.filterEdges(outgoingEdges, opts.Filter)
 	for _, edge := range outgoingEdges {
 		key := edge.To.Key()
 		neighbors[key] = edge.To
@@ -308,7 +311,7 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 		}
 	}
 
-	incomingEdges = g.filterEdgesByProperties(incomingEdges, opts.Properties)
+	incomingEdges = g.filterEdges(incomingEdges, opts.Filter)
 	for _, edge := range incomingEdges {
 		key := edge.From.Key()
 		neighbors[key] = edge.From
@@ -325,34 +328,18 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 
 // Helper functions.
 
-func (g *Graph) filterEdgesByProperties(edges []Edge, properties map[string]any) []Edge {
-	if len(properties) == 0 {
-		return edges
-	}
-
-	var filtered []Edge
-	for _, edge := range edges {
-		matches := true
-		for key, value := range properties {
-			if len(edge.Data) == 0 {
-				matches = false
-				break
-			}
-			// Unmarshal edge data to check properties.
-			var edgeData map[string]any
-			if err := json.Unmarshal(edge.Data, &edgeData); err != nil {
-				matches = false
-				break
-			}
-			if edgeData[key] != value {
-				matches = false
-				break
+// filterEdges applies custom function-based filtering.
+func (g *Graph) filterEdges(edges []Edge, filter EdgeFilter) []Edge {
+	// Apply custom filter if provided.
+	if filter != nil {
+		var filtered []Edge
+		for _, edge := range edges {
+			if filter(edge) {
+				filtered = append(filtered, edge)
 			}
 		}
-		if matches {
-			filtered = append(filtered, edge)
-		}
+		return filtered
 	}
-
-	return filtered
+	
+	return edges
 }

@@ -182,15 +182,49 @@ neighbors, err := g.GetNeighbors(ctx, "User", "alice", graph.TraversalOptions{
 
 ## Advanced Features
 
-### Property Filtering
+### Edge Filtering
 
-Filter edges based on properties during traversal:
+Filter edges during traversal using custom functions:
 
 ```go
-// Only traverse edges with high scores.
+// Filter edges with score > 5.
+scoreFilter := func(edge graph.Edge) bool {
+    if len(edge.Data) == 0 {
+        return false
+    }
+    var data map[string]any
+    if err := json.Unmarshal(edge.Data, &data); err != nil {
+        return false
+    }
+    if score, ok := data["score"].(float64); ok {
+        return score > 5
+    }
+    return false
+}
+
 paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
-    EdgeTypes:  []string{"likes"},
-    Properties: map[string]any{"score": 5}, // Only edges with score = 5.
+    EdgeTypes: []string{"likes"},
+    Filter:    scoreFilter,
+})
+
+// Combine multiple filtering criteria.
+combinedFilter := func(edge graph.Edge) bool {
+    if len(edge.Data) == 0 {
+        return false
+    }
+    var data map[string]any
+    if err := json.Unmarshal(edge.Data, &data); err != nil {
+        return false
+    }
+    // Check category AND score.
+    category, hasCategory := data["category"].(string)
+    score, hasScore := data["score"].(float64)
+    return hasCategory && category == "tech" && hasScore && score > 5
+}
+
+paths, err = g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
+    EdgeTypes: []string{"likes"},
+    Filter:    combinedFilter,
 })
 ```
 
