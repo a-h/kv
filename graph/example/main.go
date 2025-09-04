@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -137,21 +138,21 @@ func run() error {
 		{
 			FromEntityType: "Player", FromEntityID: "player1",
 			ToEntityType: "Player", ToEntityID: "player2",
-			Type:       "friends_with",
-			Properties: map[string]any{"since": "2024-01-01"},
+			Type: "friends_with",
+			Data: json.RawMessage(`{"since": "2024-01-01"}`),
 		},
 		{
 			FromEntityType: "Player", FromEntityID: "player2",
 			ToEntityType: "Player", ToEntityID: "player1",
-			Type:       "friends_with",
-			Properties: map[string]any{"since": "2024-01-01"},
+			Type: "friends_with",
+			Data: json.RawMessage(`{"since": "2024-01-01"}`),
 		},
 		// Rivalries.
 		{
 			FromEntityType: "Player", FromEntityID: "player1",
 			ToEntityType: "Player", ToEntityID: "player3",
-			Type:       "rival_of",
-			Properties: map[string]any{"intensity": 7},
+			Type: "rival_of",
+			Data: json.RawMessage(`{"intensity": 7}`),
 		},
 	}
 

@@ -52,16 +52,17 @@ func (c *GraphAddEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 	stat, err := os.Stdin.Stat()
 	if err == nil && (stat.Mode()&os.ModeCharDevice) == 0 {
 		// Stdin has data (not a terminal).
-		propertiesData, err := io.ReadAll(os.Stdin)
+		dataBytes, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			return fmt.Errorf("failed to read properties from stdin: %w", err)
+			return fmt.Errorf("failed to read edge data from stdin: %w", err)
 		}
-		if len(propertiesData) > 0 {
-			var properties map[string]any
-			if err := json.Unmarshal(propertiesData, &properties); err != nil {
-				return fmt.Errorf("invalid properties JSON from stdin: %w", err)
+		if len(dataBytes) > 0 {
+			// Validate JSON before storing as RawMessage.
+			var temp any
+			if err := json.Unmarshal(dataBytes, &temp); err != nil {
+				return fmt.Errorf("invalid JSON data from stdin: %w", err)
 			}
-			edge.Properties = properties
+			edge.Data = json.RawMessage(dataBytes)
 		}
 	}
 
@@ -328,16 +329,9 @@ func (c *GraphViewCommand) outputDot(ctx context.Context, gr *graph.Graph) error
 		toNode := fmt.Sprintf("%s_%s", edge.ToEntityType, edge.ToEntityID)
 
 		label := edge.Type
-		if len(edge.Properties) > 0 {
-			// Add properties to label.
-			propStr := ""
-			for k, v := range edge.Properties {
-				if propStr != "" {
-					propStr += ", "
-				}
-				propStr += fmt.Sprintf("%s=%v", k, v)
-			}
-			label += fmt.Sprintf("\\n{%s}", propStr)
+		if len(edge.Data) > 0 {
+			// Add raw JSON data to label.
+			label += fmt.Sprintf("\\n%s", string(edge.Data))
 		}
 
 		fmt.Printf("  \"%s\" -> \"%s\" [label=\"%s\"];\n", fromNode, toNode, label)
@@ -361,12 +355,13 @@ func (c *GraphViewCommand) outputMermaid(ctx context.Context, gr *graph.Graph) e
 		toNode := fmt.Sprintf("%s_%s", edge.ToEntityType, edge.ToEntityID)
 
 		label := edge.Type
-		if len(edge.Properties) > 0 {
-			// Add a subset of properties to keep it readable.
-			for k, v := range edge.Properties {
-				label += fmt.Sprintf(" %s=%v", k, v)
-				break // Only show first property to keep it clean.
+		if len(edge.Data) > 0 {
+			// Add raw JSON data to label (truncated for readability).
+			dataStr := string(edge.Data)
+			if len(dataStr) > 50 {
+				dataStr = dataStr[:47] + "..."
 			}
+			label += fmt.Sprintf(" %s", dataStr)
 		}
 
 		fmt.Printf("  %s -->|%s| %s\n", fromNode, label, toNode)

@@ -12,12 +12,12 @@ import (
 
 // Edge represents a relationship between two entities.
 type Edge struct {
-	FromEntityType string         `json:"fromEntityType"`
-	FromEntityID   string         `json:"fromEntityID"`
-	ToEntityType   string         `json:"toEntityType"`
-	ToEntityID     string         `json:"toEntityID"`
-	Type           string         `json:"type"`
-	Properties     map[string]any `json:"properties,omitempty"`
+	FromEntityType string          `json:"fromEntityType"`
+	FromEntityID   string          `json:"fromEntityID"`
+	ToEntityType   string          `json:"toEntityType"`
+	ToEntityID     string          `json:"toEntityID"`
+	Type           string          `json:"type"`
+	Data           json.RawMessage `json:"data,omitempty"`
 }
 
 // EdgeRef is a lightweight reference to an edge, stored as individual keys.

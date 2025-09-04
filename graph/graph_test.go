@@ -2,6 +2,7 @@ package graph_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestGraph(t *testing.T) {
 			ToEntityType:   "User",
 			ToEntityID:     "user2",
 			Type:           "follows",
-			Properties:     map[string]any{"since": "2024-01-01"},
+			Data:           json.RawMessage(`{"since": "2024-01-01"}`),
 		}
 
 		if err := g.AddEdge(ctx, followEdge); err != nil {
@@ -125,8 +126,13 @@ func TestGraph(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected edge to exist")
 		}
-		if retrievedEdge.Properties["since"] != "2024-01-01" {
-			t.Fatalf("expected property 'since' to be '2024-01-01', got %v", retrievedEdge.Properties["since"])
+		// Check edge data.
+		var edgeData map[string]any
+		if err := json.Unmarshal(retrievedEdge.Data, &edgeData); err != nil {
+			t.Fatalf("failed to unmarshal edge data: %v", err)
+		}
+		if edgeData["since"] != "2024-01-01" {
+			t.Fatalf("expected property 'since' to be '2024-01-01', got %v", edgeData["since"])
 		}
 	})
 
@@ -381,7 +387,7 @@ func TestStreamingMethods(t *testing.T) {
 			ToEntityType:   "User",
 			ToEntityID:     "bob",
 			Type:           "follows",
-			Properties:     map[string]any{"since": "2024-01-01"},
+			Data:           json.RawMessage(`{"since": "2024-01-01"}`),
 		},
 		{
 			FromEntityType: "User",

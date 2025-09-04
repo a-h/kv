@@ -2,6 +2,7 @@ package graph_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/a-h/kv/graph"
@@ -82,13 +83,14 @@ func TestGraphTraversalAlgorithms(t *testing.T) {
 	}
 
 	for _, rel := range likeRelationships {
+		edgeData, _ := json.Marshal(map[string]any{"score": rel.score})
 		edge := graph.Edge{
 			FromEntityType: "User",
 			FromEntityID:   rel.user,
 			ToEntityType:   "Post",
 			ToEntityID:     rel.post,
 			Type:           "likes",
-			Properties:     map[string]any{"score": rel.score},
+			Data:           json.RawMessage(edgeData),
 		}
 		if err := g.AddEdge(ctx, edge); err != nil {
 			t.Fatalf("failed to add like edge %s -> %s: %v", rel.user, rel.post, err)
@@ -321,13 +323,14 @@ func TestGraphQueries(t *testing.T) {
 	}
 
 	for _, purchase := range purchases {
+		edgeData, _ := json.Marshal(map[string]any{"amount": purchase.amount})
 		edge := graph.Edge{
 			FromEntityType: "User",
 			FromEntityID:   purchase.user,
 			ToEntityType:   "Product",
 			ToEntityID:     purchase.product,
 			Type:           "bought",
-			Properties:     map[string]any{"amount": purchase.amount},
+			Data:           json.RawMessage(edgeData),
 		}
 		if err := g.AddEdge(ctx, edge); err != nil {
 			t.Fatalf("failed to add purchase edge: %v", err)
@@ -369,8 +372,11 @@ func TestGraphQueries(t *testing.T) {
 		var expensivePurchases []graph.Path
 		for _, path := range paths {
 			if len(path.Edges) > 0 {
-				if amount, ok := path.Edges[0].Properties["amount"].(float64); ok && amount > 100 {
-					expensivePurchases = append(expensivePurchases, path)
+				var edgeData map[string]any
+				if err := json.Unmarshal(path.Edges[0].Data, &edgeData); err == nil {
+					if amount, ok := edgeData["amount"].(float64); ok && amount > 100 {
+						expensivePurchases = append(expensivePurchases, path)
+					}
 				}
 			}
 		}

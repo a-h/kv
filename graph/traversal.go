@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
@@ -352,11 +353,17 @@ func (g *Graph) filterEdgesByProperties(edges []Edge, properties map[string]any)
 	for _, edge := range edges {
 		matches := true
 		for key, value := range properties {
-			if edge.Properties == nil {
+			if len(edge.Data) == 0 {
 				matches = false
 				break
 			}
-			if edge.Properties[key] != value {
+			// Unmarshal edge data to check properties.
+			var edgeData map[string]any
+			if err := json.Unmarshal(edge.Data, &edgeData); err != nil {
+				matches = false
+				break
+			}
+			if edgeData[key] != value {
 				matches = false
 				break
 			}
