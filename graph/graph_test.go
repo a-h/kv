@@ -418,7 +418,7 @@ func TestStreamingMethods(t *testing.T) {
 		}
 	}
 
-	t.Run("GetOutgoing specific type", func(t *testing.T) {
+	t.Run("returns only edges of specified type when filtering outgoing edges", func(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
@@ -444,7 +444,7 @@ func TestStreamingMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("GetIncoming specific type", func(t *testing.T) {
+	t.Run("returns only edges of specified type when filtering incoming edges", func(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
@@ -470,7 +470,7 @@ func TestStreamingMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("GetAllOutgoing", func(t *testing.T) {
+	t.Run("returns all outgoing edges regardless of type", func(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
@@ -508,7 +508,7 @@ func TestStreamingMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("GetAllIncoming", func(t *testing.T) {
+	t.Run("returns all incoming edges regardless of type", func(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
@@ -534,7 +534,7 @@ func TestStreamingMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("All", func(t *testing.T) {
+	t.Run("streams all edges when using wildcard edge type", func(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 

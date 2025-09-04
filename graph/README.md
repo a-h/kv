@@ -36,10 +36,10 @@ Rather than making individual database calls for each edge (N+1 query pattern), 
 ### Configurable Batch Size
 
 ```go
-// Default batch size (1000)
+// Default batch size (1000).
 g := graph.New(store)
 
-// Custom batch size for your workload
+// Custom batch size for your workload.
 g := graph.NewWithBatchSize(store, 500)
 ```
 
@@ -59,18 +59,18 @@ import (
     "github.com/a-h/kv/sqlitekv"
 )
 
-// Initialize your KV store
+// Initialize your KV store.
 store := sqlitekv.NewStore(pool)
 store.Init(ctx)
 
-// Create graph instance
+// Create graph instance.
 g := graph.New(store)
 ```
 
 ### Adding Entities and Relationships
 
 ```go
-// Store entities in KV store first
+// Store entities in KV store first.
 user1 := User{ID: "alice", Name: "Alice"}
 user2 := User{ID: "bob", Name: "Bob"}
 post := Post{ID: "post1", Title: "Hello World"}
@@ -79,7 +79,7 @@ store.Put(ctx, "user/alice", -1, user1)
 store.Put(ctx, "user/bob", -1, user2)
 store.Put(ctx, "post/post1", -1, post)
 
-// Create relationships
+// Create relationships.
 followEdge := graph.Edge{
     FromEntityType: "User",
     FromEntityID:   "alice",
@@ -105,19 +105,19 @@ g.AddEdge(ctx, authorEdge)
 ### Querying Relationships
 
 ```go
-// Get specific edge
+// Get specific edge.
 edge, exists, err := g.GetEdge(ctx, "User", "alice", "follows", "User", "bob")
 
-// Get all users alice follows
+// Get all users alice follows.
 following, err := g.GetOutgoingEdges(ctx, "User", "alice", "follows")
 
-// Get all followers of bob
+// Get all followers of bob.
 followers, err := g.GetIncomingEdges(ctx, "User", "bob", "follows")
 
-// Get all relationships from alice (any type)
+// Get all relationships from alice (any type).
 allOutgoing, err := g.GetAllOutgoingEdges(ctx, "User", "alice")
 
-// Get all relationships to bob (any type)
+// Get all relationships to bob (any type).
 allIncoming, err := g.GetAllIncomingEdges(ctx, "User", "bob")
 ```
 
@@ -126,14 +126,14 @@ allIncoming, err := g.GetAllIncomingEdges(ctx, "User", "bob")
 ### Breadth-First Search
 
 ```go
-// Traverse the graph starting from alice, max 3 hops
+// Traverse the graph starting from alice, max 3 hops.
 paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
     MaxDepth:   3,
-    EdgeTypes:  []string{"follows"}, // Only follow edges
-    VisitLimit: 100,                 // Max 100 nodes
+    EdgeTypes:  []string{"follows"}, // Only follow "follows" edges.
+    VisitLimit: 100,                 // Maximum of 100 nodes.
 })
 
-// Each path contains the nodes and edges traversed
+// Each path contains the nodes and edges traversed.
 for _, path := range paths {
     fmt.Printf("Depth %d: %v\n", path.Depth, path.Nodes)
 }
@@ -142,7 +142,7 @@ for _, path := range paths {
 ### Shortest Path
 
 ```go
-// Find shortest path from alice to charlie
+// Find shortest path from alice to charlie.
 path, err := g.FindShortestPath(ctx, "User", "alice", "User", "charlie", 
     graph.TraversalOptions{
         EdgeTypes: []string{"follows"},
@@ -159,7 +159,7 @@ if path != nil {
 ### Finding Common Connections
 
 ```go
-// Find mutual follows between alice and bob
+// Find mutual follows between alice and bob.
 mutual, err := g.FindMutualConnections(ctx, "User", "alice", "User", "bob", "follows")
 
 for _, connection := range mutual {
@@ -170,11 +170,11 @@ for _, connection := range mutual {
 ### Graph Analytics
 
 ```go
-// Get node degree (number of connections)
+// Get node degree (number of connections).
 inDegree, outDegree, err := g.GetDegree(ctx, "User", "alice", "follows")
 fmt.Printf("Alice follows %d users and is followed by %d users\n", outDegree, inDegree)
 
-// Get all neighbors (both directions)
+// Get all neighbors (both directions).
 neighbors, err := g.GetNeighbors(ctx, "User", "alice", graph.TraversalOptions{
     EdgeTypes: []string{"follows", "likes"},
 })
@@ -187,10 +187,10 @@ neighbors, err := g.GetNeighbors(ctx, "User", "alice", graph.TraversalOptions{
 Filter edges based on properties during traversal:
 
 ```go
-// Only traverse edges with high scores
+// Only traverse edges with high scores.
 paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
     EdgeTypes:  []string{"likes"},
-    Properties: map[string]any{"score": 5}, // Only edges with score = 5
+    Properties: map[string]any{"score": 5}, // Only edges with score = 5.
 })
 ```
 
@@ -224,14 +224,14 @@ graph/node/{entityType}/{entityID}/incoming/{edgeType}
 ### Social Networks
 
 ```go
-// User follows another user
+// User follows another user.
 g.AddEdge(ctx, graph.Edge{
     FromEntityType: "User", FromEntityID: "alice",
     ToEntityType: "User", ToEntityID: "bob",
     Type: "follows",
 })
 
-// Find followers, following, mutual connections
+// Find followers, following, mutual connections.
 followers, _ := g.GetIncomingEdges(ctx, "User", "alice", "follows")
 following, _ := g.GetOutgoingEdges(ctx, "User", "alice", "follows")
 mutual, _ := g.FindMutualConnections(ctx, "User", "alice", "User", "bob", "follows")
