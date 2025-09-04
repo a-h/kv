@@ -11,8 +11,13 @@ type Paginator struct {
 	Limit int
 }
 
-// NewPaginator creates a new paginator with the given store and batch limit.
-func NewPaginator(store Store, limit int) *Paginator {
+// NewPaginator creates a new paginator with the given store and default batch limit (1000).
+func NewPaginator(store Store) *Paginator {
+	return NewPaginatorWithLimit(store, 1000)
+}
+
+// NewPaginatorWithLimit creates a new paginator with the given store and custom batch limit.
+func NewPaginatorWithLimit(store Store, limit int) *Paginator {
 	if limit <= 0 {
 		limit = 1000
 	}

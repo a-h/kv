@@ -64,39 +64,20 @@ type Graph struct {
 	MaxTraversalNodes int
 }
 
-// New creates a new graph instance.
+// New creates a new graph instance with default settings.
+// Uses a default paginator with batch size 1000 and max traversal nodes 100000.
 func New(store kv.Store) *Graph {
-	return &Graph{
-		store:             store,
-		paginator:         kv.NewPaginator(store, 1000), // Default batch size of 1000
-		MaxTraversalNodes: 100000,                       // Default max traversal nodes
-	}
+	return NewWithPaginator(kv.NewPaginator(store))
 }
 
-// NewWithBatchSize creates a new graph instance with a custom batch size for pagination.
-func NewWithBatchSize(store kv.Store, batchSize int) *Graph {
-	if batchSize <= 0 {
-		batchSize = 1000
-	}
+// NewWithPaginator creates a new graph instance with a custom paginator.
+// This allows fine-grained control over batch sizes and pagination behavior.
+// The MaxTraversalNodes can be set on the returned graph if needed.
+func NewWithPaginator(paginator *kv.Paginator) *Graph {
 	return &Graph{
-		store:             store,
-		paginator:         kv.NewPaginator(store, batchSize),
-		MaxTraversalNodes: 100000,
-	}
-}
-
-// NewWithConfig creates a new graph instance with custom configuration.
-func NewWithConfig(store kv.Store, batchSize, maxTraversalNodes int) *Graph {
-	if batchSize <= 0 {
-		batchSize = 1000
-	}
-	if maxTraversalNodes <= 0 {
-		maxTraversalNodes = 100000
-	}
-	return &Graph{
-		store:             store,
-		paginator:         kv.NewPaginator(store, batchSize),
-		MaxTraversalNodes: maxTraversalNodes,
+		store:             paginator.Store,
+		paginator:         paginator,
+		MaxTraversalNodes: 100000, // Default max traversal nodes
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/a-h/kv"
 	rqlitehttp "github.com/rqlite/rqlite-go-http"
@@ -55,10 +56,7 @@ func (s *Store) GetBatch(ctx context.Context, keys ...string) (items map[string]
 	items = make(map[string]kv.Record)
 
 	// Process keys in chunks to avoid hitting database limits.
-	for i := 0; i < len(keys); i += getBatchMaxKeyCount {
-		end := min(i+getBatchMaxKeyCount, len(keys))
-		chunk := keys[i:end]
-
+	for chunk := range slices.Chunk(keys, getBatchMaxKeyCount) {
 		// Use JSON array approach with json_each to avoid string concatenation.
 		keysJSON, err := json.Marshal(chunk)
 		if err != nil {
