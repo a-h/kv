@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 
 	"github.com/a-h/kv/graph"
 )
@@ -24,33 +25,30 @@ func (c *GraphGetIncomingCommand) Run(ctx context.Context, g GlobalFlags) error 
 
 	node := graph.NewNodeRef(c.EntityType, c.EntityID)
 
-	var edges []graph.Edge
+	// Get the appropriate edge iterator based on edge type.
+	var edgeIterator iter.Seq2[graph.Edge, error]
 	if c.EdgeType == "*" {
-		for edge, err := range gr.GetAllIncoming(ctx, node) {
-			if err != nil {
-				return fmt.Errorf("failed to get incoming edges: %w", err)
-			}
-			edges = append(edges, edge)
-		}
+		edgeIterator = gr.GetAllIncoming(ctx, node)
 	} else {
-		for edge, err := range gr.GetIncoming(ctx, node, c.EdgeType) {
-			if err != nil {
-				return fmt.Errorf("failed to get incoming edges: %w", err)
-			}
-			edges = append(edges, edge)
+		edgeIterator = gr.GetIncoming(ctx, node, c.EdgeType)
+	}
+
+	var edgeCount int
+	for edge, err := range edgeIterator {
+		if err != nil {
+			return fmt.Errorf("failed to get incoming edges: %w", err)
 		}
-	}
-
-	if len(edges) == 0 {
-		return fmt.Errorf("no incoming edges found")
-	}
-
-	for _, edge := range edges {
+		
 		output, err := json.MarshalIndent(edge, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal edge: %w", err)
 		}
 		fmt.Println(string(output))
+		edgeCount++
+	}
+
+	if edgeCount == 0 {
+		return fmt.Errorf("no incoming edges found")
 	}
 
 	return nil

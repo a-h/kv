@@ -287,100 +287,12 @@ func (g *Graph) GetIncoming(ctx context.Context, node NodeRef, edgeType string) 
 
 // GetAllOutgoing returns an iterator that streams all outgoing edges from a node (all types).
 func (g *Graph) GetAllOutgoing(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
-	return func(yield func(Edge, error) bool) {
-		prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", node.Type, node.ID)
-
-		// Use paginator to stream edge references in batches without grouping by type.
-		var edgeKeys []string
-
-		for record, err := range g.paginator.GetPrefix(ctx, prefix) {
-			if err != nil {
-				yield(Edge{}, err)
-				return
-			}
-
-			// Check context cancellation.
-			if err := ctx.Err(); err != nil {
-				yield(Edge{}, err)
-				return
-			}
-
-			var edgeRef EdgeRef
-			if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
-				continue // Skip malformed references
-			}
-
-			// Extract edge type from the key.
-			edgeType := extractEdgeTypeFromKey(record.Key)
-
-			// Build the edge key for batch retrieval.
-			edge := Edge{From: node, Type: edgeType, To: edgeRef.Node}
-			edgeKey := edge.Key()
-			edgeKeys = append(edgeKeys, edgeKey)
-
-			// Process batch when we reach the paginator limit.
-			if len(edgeKeys) >= g.paginator.Limit {
-				if !g.processBatchedEdges(ctx, edgeKeys, yield) {
-					return
-				}
-				edgeKeys = edgeKeys[:0]
-			}
-		}
-
-		// Process remaining edges.
-		if len(edgeKeys) > 0 {
-			g.processBatchedEdges(ctx, edgeKeys, yield)
-		}
-	}
+	return g.GetOutgoing(ctx, node, "*")
 }
 
 // GetAllIncoming returns an iterator that streams all incoming edges to a node (all types).
 func (g *Graph) GetAllIncoming(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
-	return func(yield func(Edge, error) bool) {
-		prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", node.Type, node.ID)
-
-		// Use paginator to stream edge references in batches without grouping by type.
-		var edgeKeys []string
-
-		for record, err := range g.paginator.GetPrefix(ctx, prefix) {
-			if err != nil {
-				yield(Edge{}, err)
-				return
-			}
-
-			// Check context cancellation.
-			if err := ctx.Err(); err != nil {
-				yield(Edge{}, err)
-				return
-			}
-
-			var edgeRef EdgeRef
-			if err := json.Unmarshal(record.Value, &edgeRef); err != nil {
-				continue // Skip malformed references
-			}
-
-			// Extract edge type from the key.
-			edgeType := extractEdgeTypeFromKey(record.Key)
-
-			// Build the edge key for batch retrieval.
-			edge := Edge{From: edgeRef.Node, Type: edgeType, To: node}
-			edgeKey := edge.Key()
-			edgeKeys = append(edgeKeys, edgeKey)
-
-			// Process batch when we reach the paginator limit.
-			if len(edgeKeys) >= g.paginator.Limit {
-				if !g.processBatchedEdges(ctx, edgeKeys, yield) {
-					return
-				}
-				edgeKeys = edgeKeys[:0]
-			}
-		}
-
-		// Process remaining edges.
-		if len(edgeKeys) > 0 {
-			g.processBatchedEdges(ctx, edgeKeys, yield)
-		}
-	}
+	return g.GetIncoming(ctx, node, "*")
 }
 
 // All returns an iterator that streams all edges in the graph.

@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"iter"
+	"maps"
+	"slices"
 
 	"github.com/a-h/kv/graph"
 )
@@ -39,26 +42,55 @@ func (c *GraphViewCommand) outputDot(ctx context.Context, gr *graph.Graph) error
 	fmt.Println("  node [shape=box, style=rounded];")
 	fmt.Println()
 
-	edges, err := c.collectEdges(ctx, gr)
+	// Get the edge iterator based on entity type.
+	edgeIterator, err := c.getEdgeIterator(ctx, gr)
 	if err != nil {
 		return err
 	}
 
-	// Collect unique nodes.
+	// Track unique nodes as we stream edges.
 	nodes := make(map[string]bool)
-	for _, edge := range edges {
+	const maxEdges = 10000 // Prevent memory issues
+	var edgeCount int
+
+	// First pass: collect nodes.
+	for edge, err := range edgeIterator() {
+		if err != nil {
+			return fmt.Errorf("failed to iterate edges: %w", err)
+		}
+		if edgeCount >= maxEdges {
+			return fmt.Errorf("too many edges (%d+) for visualization - please filter by entity type", maxEdges)
+		}
+
+		// Apply edge type filter if specified (only for "all" mode).
+		if c.EntityType == "*" && c.EdgeType != "*" && edge.Type != c.EdgeType {
+			continue
+		}
+
 		nodes[edge.From.Key()] = true
 		nodes[edge.To.Key()] = true
+		edgeCount++
 	}
 
 	// Output node definitions.
-	for node := range nodes {
+	nodeKeys := slices.Collect(maps.Keys(nodes))
+	slices.Sort(nodeKeys)
+	for _, node := range nodeKeys {
 		fmt.Printf("  \"%s\";\n", node)
 	}
 	fmt.Println()
 
-	// Output edges.
-	for _, edge := range edges {
+	// Second pass: output edges.
+	for edge, err := range edgeIterator() {
+		if err != nil {
+			return fmt.Errorf("failed to iterate edges: %w", err)
+		}
+
+		// Apply edge type filter if specified (only for "all" mode).
+		if c.EntityType == "*" && c.EdgeType != "*" && edge.Type != c.EdgeType {
+			continue
+		}
+
 		fromNode := edge.From.Key()
 		toNode := edge.To.Key()
 
@@ -78,13 +110,29 @@ func (c *GraphViewCommand) outputDot(ctx context.Context, gr *graph.Graph) error
 func (c *GraphViewCommand) outputMermaid(ctx context.Context, gr *graph.Graph) error {
 	fmt.Println("graph LR")
 
-	edges, err := c.collectEdges(ctx, gr)
+	// Get the edge iterator based on entity type.
+	edgeIterator, err := c.getEdgeIterator(ctx, gr)
 	if err != nil {
 		return err
 	}
 
-	// Output edges in Mermaid format.
-	for _, edge := range edges {
+	const maxEdges = 10000 // Prevent memory issues
+	var edgeCount int
+
+	// Stream and output edges directly.
+	for edge, err := range edgeIterator() {
+		if err != nil {
+			return fmt.Errorf("failed to iterate edges: %w", err)
+		}
+		if edgeCount >= maxEdges {
+			return fmt.Errorf("too many edges (%d+) for visualization - please filter by entity type", maxEdges)
+		}
+
+		// Apply edge type filter if specified (only for "all" mode).
+		if c.EntityType == "*" && c.EdgeType != "*" && edge.Type != c.EdgeType {
+			continue
+		}
+
 		fromNode := edge.From.Key()
 		toNode := edge.To.Key()
 
@@ -99,115 +147,47 @@ func (c *GraphViewCommand) outputMermaid(ctx context.Context, gr *graph.Graph) e
 		}
 
 		fmt.Printf("  %s -->|%s| %s\n", fromNode, label, toNode)
+		edgeCount++
 	}
 
 	return nil
 }
 
-func (c *GraphViewCommand) collectEdges(ctx context.Context, gr *graph.Graph) ([]graph.Edge, error) {
-	var allEdges []graph.Edge
-	const maxEdges = 10000 // Prevent memory issues
-
+func (c *GraphViewCommand) getEdgeIterator(ctx context.Context, gr *graph.Graph) (func() iter.Seq2[graph.Edge, error], error) {
 	if c.EntityType == "*" {
-		// Get all edges in the graph by scanning all graph keys.
-		var edgeCount int
-		for edge, err := range gr.All(ctx) {
-			if err != nil {
-				return nil, fmt.Errorf("failed to list all edges: %w", err)
-			}
-			if edgeCount >= maxEdges {
-				return nil, fmt.Errorf("too many edges (%d+) for visualization - please filter by entity type", maxEdges)
-			}
-			allEdges = append(allEdges, edge)
-			edgeCount++
-		}
-
-		// Apply edge type filter if specified.
-		if c.EdgeType != "*" {
-			var filtered []graph.Edge
-			for _, edge := range allEdges {
-				if edge.Type == c.EdgeType {
-					filtered = append(filtered, edge)
-				}
-			}
-			allEdges = filtered
-		}
-	} else {
-		if c.EntityID == "" || c.EntityID == "*" {
-			// Get all entities of the specified type by scanning the store.
-			// This is a limitation - we'd need to maintain an entity index for this to work efficiently.
-			return nil, fmt.Errorf("getting all entities of a type is not yet supported - please specify both entity type and ID, or use '*' for both")
-		} else {
-			// Get edges for specific entity.
-			node := graph.NewNodeRef(c.EntityType, c.EntityID)
+		return func() iter.Seq2[graph.Edge, error] {
+			return gr.All(ctx)
+		}, nil
+	}
+	
+	if c.EntityID == "" || c.EntityID == "*" {
+		return nil, fmt.Errorf("getting all entities of a type is not yet supported - please specify both entity type and ID, or use '*' for both")
+	}
+	
+	node := graph.NewNodeRef(c.EntityType, c.EntityID)
+	return func() iter.Seq2[graph.Edge, error] {
+		return func(yield func(graph.Edge, error) bool) {
+			// Stream outgoing edges.
 			for edge, err := range gr.GetOutgoing(ctx, node, c.EdgeType) {
 				if err != nil {
-					return nil, fmt.Errorf("failed to get outgoing edges: %w", err)
+					yield(graph.Edge{}, err)
+					return
 				}
-				allEdges = append(allEdges, edge)
+				if !yield(edge, nil) {
+					return
+				}
 			}
-
-			// For visualization, also include incoming edges to show the full picture.
+			
+			// Stream incoming edges for visualization.
 			for edge, err := range gr.GetIncoming(ctx, node, c.EdgeType) {
 				if err != nil {
-					return nil, fmt.Errorf("failed to get incoming edges: %w", err)
+					yield(graph.Edge{}, err)
+					return
 				}
-				allEdges = append(allEdges, edge)
-			}
-		}
-	}
-
-	// Apply depth filtering if needed.
-	if c.MaxDepth > 0 {
-		allEdges = c.filterByDepth(allEdges, c.EntityType, c.EntityID, c.MaxDepth)
-	}
-
-	return allEdges, nil
-}
-
-func (c *GraphViewCommand) filterByDepth(edges []graph.Edge, rootType, rootID string, maxDepth int) []graph.Edge {
-	if rootType == "*" || rootID == "*" || rootID == "" {
-		// Can't filter by depth without a specific starting node.
-		return edges
-	}
-
-	visited := make(map[string]int)
-	var filtered []graph.Edge
-
-	// BFS to find edges within the depth limit.
-	queue := []struct {
-		nodeType string
-		nodeID   string
-		depth    int
-	}{{rootType, rootID, 0}}
-	visited[fmt.Sprintf("%s:%s", rootType, rootID)] = 0
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		if current.depth >= maxDepth {
-			continue
-		}
-
-		// Find edges from this node.
-		for _, edge := range edges {
-			if edge.From.Type == current.nodeType && edge.From.ID == current.nodeID {
-				filtered = append(filtered, edge)
-
-				// Add target to queue if not visited or found at greater depth.
-				targetKey := edge.To.Key()
-				if prevDepth, ok := visited[targetKey]; !ok || prevDepth > current.depth+1 {
-					visited[targetKey] = current.depth + 1
-					queue = append(queue, struct {
-						nodeType string
-						nodeID   string
-						depth    int
-					}{edge.To.Type, edge.To.ID, current.depth + 1})
+				if !yield(edge, nil) {
+					return
 				}
 			}
 		}
-	}
-
-	return filtered
+	}, nil
 }

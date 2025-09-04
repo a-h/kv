@@ -64,15 +64,28 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 
 		currentNode := currentPath.Nodes[len(currentPath.Nodes)-1]
 
-		// Get all outgoing edges from current node.
-		var edges []Edge
-
+		// Stream outgoing edges directly without collecting.
 		if len(opts.EdgeTypes) == 0 {
 			for edge, err := range g.GetAllOutgoing(ctx, currentNode) {
 				if err != nil {
 					return nil, err
 				}
-				edges = append(edges, edge)
+				// Apply filter directly.
+				if opts.Filter == nil || opts.Filter(edge) {
+					neighborKey := edge.To.Key()
+					if !visited[neighborKey] {
+						visited[neighborKey] = true
+						nodesVisited++
+
+						newPath := Path{
+							Nodes: append(currentPath.Nodes, edge.To),
+							Edges: append(currentPath.Edges, edge),
+							Depth: currentPath.Depth + 1,
+						}
+
+						queue = append(queue, newPath)
+					}
+				}
 			}
 		} else {
 			for _, edgeType := range opts.EdgeTypes {
@@ -80,28 +93,23 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 					if err != nil {
 						return nil, err
 					}
-					edges = append(edges, edge)
+					// Apply filter directly.
+					if opts.Filter == nil || opts.Filter(edge) {
+						neighborKey := edge.To.Key()
+						if !visited[neighborKey] {
+							visited[neighborKey] = true
+							nodesVisited++
+
+							newPath := Path{
+								Nodes: append(currentPath.Nodes, edge.To),
+								Edges: append(currentPath.Edges, edge),
+								Depth: currentPath.Depth + 1,
+							}
+
+							queue = append(queue, newPath)
+						}
+					}
 				}
-			}
-		}
-
-		// Filter edges by custom function if specified.
-		edges = g.filterEdges(edges, opts.Filter)
-
-		// Add unvisited neighbors to queue.
-		for _, edge := range edges {
-			neighborKey := edge.To.Key()
-			if !visited[neighborKey] {
-				visited[neighborKey] = true
-				nodesVisited++
-
-				newPath := Path{
-					Nodes: append(currentPath.Nodes, edge.To),
-					Edges: append(currentPath.Edges, edge),
-					Depth: currentPath.Depth + 1,
-				}
-
-				queue = append(queue, newPath)
 			}
 		}
 	}
@@ -151,15 +159,28 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 			continue
 		}
 
-		// Get all outgoing edges from current node.
-		var edges []Edge
-
+		// Stream outgoing edges directly without collecting.
 		if len(opts.EdgeTypes) == 0 {
 			for edge, err := range g.GetAllOutgoing(ctx, currentNode) {
 				if err != nil {
 					return nil, err
 				}
-				edges = append(edges, edge)
+				// Apply filter directly.
+				if opts.Filter == nil || opts.Filter(edge) {
+					neighborKey := edge.To.Key()
+					if !visited[neighborKey] {
+						visited[neighborKey] = true
+						nodesVisited++
+
+						newPath := Path{
+							Nodes: append(currentPath.Nodes, edge.To),
+							Edges: append(currentPath.Edges, edge),
+							Depth: currentPath.Depth + 1,
+						}
+
+						queue = append(queue, newPath)
+					}
+				}
 			}
 		} else {
 			for _, edgeType := range opts.EdgeTypes {
@@ -167,28 +188,23 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 					if err != nil {
 						return nil, err
 					}
-					edges = append(edges, edge)
+					// Apply filter directly.
+					if opts.Filter == nil || opts.Filter(edge) {
+						neighborKey := edge.To.Key()
+						if !visited[neighborKey] {
+							visited[neighborKey] = true
+							nodesVisited++
+
+							newPath := Path{
+								Nodes: append(currentPath.Nodes, edge.To),
+								Edges: append(currentPath.Edges, edge),
+								Depth: currentPath.Depth + 1,
+							}
+
+							queue = append(queue, newPath)
+						}
+					}
 				}
-			}
-		}
-
-		// Filter edges by custom function if specified.
-		edges = g.filterEdges(edges, opts.Filter)
-
-		// Add unvisited neighbors to queue.
-		for _, edge := range edges {
-			neighborKey := edge.To.Key()
-			if !visited[neighborKey] {
-				visited[neighborKey] = true
-				nodesVisited++
-
-				newPath := Path{
-					Nodes: append(currentPath.Nodes, edge.To),
-					Edges: append(currentPath.Edges, edge),
-					Depth: currentPath.Depth + 1,
-				}
-
-				queue = append(queue, newPath)
 			}
 		}
 	}
@@ -263,15 +279,17 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 	node := NewNodeRef(entityType, entityID)
 	neighbors := make(map[string]NodeRef)
 
-	// Get outgoing neighbors.
-	var outgoingEdges []Edge
-
+	// Get outgoing neighbors - stream directly without collecting.
 	if len(opts.EdgeTypes) == 0 {
 		for edge, err := range g.GetAllOutgoing(ctx, node) {
 			if err != nil {
 				return nil, err
 			}
-			outgoingEdges = append(outgoingEdges, edge)
+			// Apply filter directly.
+			if opts.Filter == nil || opts.Filter(edge) {
+				key := edge.To.Key()
+				neighbors[key] = edge.To
+			}
 		}
 	} else {
 		for _, edgeType := range opts.EdgeTypes {
@@ -279,26 +297,26 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 				if err != nil {
 					return nil, err
 				}
-				outgoingEdges = append(outgoingEdges, edge)
+				// Apply filter directly.
+				if opts.Filter == nil || opts.Filter(edge) {
+					key := edge.To.Key()
+					neighbors[key] = edge.To
+				}
 			}
 		}
 	}
 
-	outgoingEdges = g.filterEdges(outgoingEdges, opts.Filter)
-	for _, edge := range outgoingEdges {
-		key := edge.To.Key()
-		neighbors[key] = edge.To
-	}
-
-	// Get incoming neighbors.
-	var incomingEdges []Edge
-
+	// Get incoming neighbors - stream directly without collecting.
 	if len(opts.EdgeTypes) == 0 {
 		for edge, err := range g.GetAllIncoming(ctx, node) {
 			if err != nil {
 				return nil, err
 			}
-			incomingEdges = append(incomingEdges, edge)
+			// Apply filter directly.
+			if opts.Filter == nil || opts.Filter(edge) {
+				key := edge.From.Key()
+				neighbors[key] = edge.From
+			}
 		}
 	} else {
 		for _, edgeType := range opts.EdgeTypes {
@@ -306,15 +324,13 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 				if err != nil {
 					return nil, err
 				}
-				incomingEdges = append(incomingEdges, edge)
+				// Apply filter directly.
+				if opts.Filter == nil || opts.Filter(edge) {
+					key := edge.From.Key()
+					neighbors[key] = edge.From
+				}
 			}
 		}
-	}
-
-	incomingEdges = g.filterEdges(incomingEdges, opts.Filter)
-	for _, edge := range incomingEdges {
-		key := edge.From.Key()
-		neighbors[key] = edge.From
 	}
 
 	// Convert map to slice.
@@ -324,22 +340,4 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 	}
 
 	return result, nil
-}
-
-// Helper functions.
-
-// filterEdges applies custom function-based filtering.
-func (g *Graph) filterEdges(edges []Edge, filter EdgeFilter) []Edge {
-	// Apply custom filter if provided.
-	if filter != nil {
-		var filtered []Edge
-		for _, edge := range edges {
-			if filter(edge) {
-				filtered = append(filtered, edge)
-			}
-		}
-		return filtered
-	}
-	
-	return edges
 }
