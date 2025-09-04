@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/a-h/kv/graph"
 )
@@ -19,12 +21,11 @@ type GraphCommand struct {
 }
 
 type GraphAddEdgeCommand struct {
-	FromType   string `arg:"" help:"Source entity type"`
-	FromID     string `arg:"" help:"Source entity ID"`
-	EdgeType   string `arg:"" help:"Edge type"`
-	ToType     string `arg:"" help:"Target entity type"`
-	ToID       string `arg:"" help:"Target entity ID"`
-	Properties string `help:"Edge properties as JSON" default:""`
+	FromType string `arg:"" help:"Source entity type"`
+	FromID   string `arg:"" help:"Source entity ID"`
+	EdgeType string `arg:"" help:"Edge type"`
+	ToType   string `arg:"" help:"Target entity type"`
+	ToID     string `arg:"" help:"Target entity ID"`
 }
 
 func (c *GraphAddEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
@@ -47,12 +48,21 @@ func (c *GraphAddEdgeCommand) Run(ctx context.Context, g GlobalFlags) error {
 		Type:           c.EdgeType,
 	}
 
-	if c.Properties != "" {
-		var properties map[string]any
-		if err := json.Unmarshal([]byte(c.Properties), &properties); err != nil {
-			return fmt.Errorf("invalid properties JSON: %w", err)
+	// Read properties from stdin if available.
+	stat, err := os.Stdin.Stat()
+	if err == nil && (stat.Mode()&os.ModeCharDevice) == 0 {
+		// Stdin has data (not a terminal).
+		propertiesData, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("failed to read properties from stdin: %w", err)
 		}
-		edge.Properties = properties
+		if len(propertiesData) > 0 {
+			var properties map[string]any
+			if err := json.Unmarshal(propertiesData, &properties); err != nil {
+				return fmt.Errorf("invalid properties JSON from stdin: %w", err)
+			}
+			edge.Properties = properties
+		}
 	}
 
 	if err := gr.AddEdge(ctx, edge); err != nil {
