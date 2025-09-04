@@ -18,6 +18,11 @@ type Edge struct {
 	Data json.RawMessage `json:"data,omitempty"`
 }
 
+// Key returns a unique string key for this edge.
+func (e Edge) Key() string {
+	return fmt.Sprintf("graph/edge/%s/%s/%s/%s/%s", e.From.Type, e.From.ID, e.Type, e.To.Type, e.To.ID)
+}
+
 // NodeRef represents a reference to a node in the graph.
 type NodeRef struct {
 	Type string `json:"type"`
@@ -102,13 +107,13 @@ func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
 	}
 
 	// Store the edge itself.
-	edgeKey := edgeKey(edge.From.Type, edge.From.ID, edge.Type, edge.To.Type, edge.To.ID)
+	edgeKey := edge.Key()
 
 	// Store outgoing edge reference.
-	outgoingRefKey := outgoingEdgeRefKey(edge.From.Type, edge.From.ID, edge.Type, edge.To.Type, edge.To.ID)
+	outgoingRefKey := outgoingEdgeRefKey(edge.From, edge.Type, edge.To)
 
 	// Store incoming edge reference.
-	incomingRefKey := incomingEdgeRefKey(edge.To.Type, edge.To.ID, edge.Type, edge.From.Type, edge.From.ID)
+	incomingRefKey := incomingEdgeRefKey(edge.To, edge.Type, edge.From)
 
 	edgeRef := EdgeRef{
 		Node:     edge.To,
@@ -132,9 +137,17 @@ func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
 
 // RemoveEdge removes a directed edge.
 func (g *Graph) RemoveEdge(ctx context.Context, fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID string) error {
-	edgeKey := edgeKey(fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID)
-	outgoingRefKey := outgoingEdgeRefKey(fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID)
-	incomingRefKey := incomingEdgeRefKey(toEntityType, toEntityID, edgeType, fromEntityType, fromEntityID)
+	from := NewNodeRef(fromEntityType, fromEntityID)
+	to := NewNodeRef(toEntityType, toEntityID)
+	return g.RemoveEdgeByRef(ctx, from, edgeType, to)
+}
+
+// RemoveEdgeByRef removes a directed edge using NodeRef parameters.
+func (g *Graph) RemoveEdgeByRef(ctx context.Context, from NodeRef, edgeType string, to NodeRef) error {
+	edge := Edge{From: from, Type: edgeType, To: to}
+	edgeKey := edge.Key()
+	outgoingRefKey := outgoingEdgeRefKey(from, edgeType, to)
+	incomingRefKey := incomingEdgeRefKey(to, edgeType, from)
 
 	mutations := []kv.Mutation{
 		kv.Delete(edgeKey),
@@ -148,7 +161,15 @@ func (g *Graph) RemoveEdge(ctx context.Context, fromEntityType, fromEntityID, ed
 
 // GetEdge retrieves a specific edge.
 func (g *Graph) GetEdge(ctx context.Context, fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID string) (edge Edge, ok bool, err error) {
-	key := edgeKey(fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID)
+	from := NewNodeRef(fromEntityType, fromEntityID)
+	to := NewNodeRef(toEntityType, toEntityID)
+	return g.GetEdgeByRef(ctx, from, edgeType, to)
+}
+
+// GetEdgeByRef retrieves a specific edge using NodeRef parameters.
+func (g *Graph) GetEdgeByRef(ctx context.Context, from NodeRef, edgeType string, to NodeRef) (edge Edge, ok bool, err error) {
+	searchEdge := Edge{From: from, Type: edgeType, To: to}
+	key := searchEdge.Key()
 	_, ok, err = g.store.Get(ctx, key, &edge)
 	if err != nil {
 		return edge, false, err
@@ -158,14 +179,20 @@ func (g *Graph) GetEdge(ctx context.Context, fromEntityType, fromEntityID, edgeT
 
 // GetOutgoing returns an iterator that streams outgoing edges of a specific type from an entity.
 func (g *Graph) GetOutgoing(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
+	node := NewNodeRef(entityType, entityID)
+	return g.GetOutgoingByRef(ctx, node, edgeType)
+}
+
+// GetOutgoingByRef returns an iterator that streams outgoing edges of a specific type from a node.
+func (g *Graph) GetOutgoingByRef(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		var prefix string
 		if edgeType == "*" {
 			// Get all outgoing edges regardless of type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
+			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/", node.Type, node.ID)
 		} else {
 			// Get edges of specific type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/%s/", entityType, entityID, edgeType)
+			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/%s/", node.Type, node.ID, edgeType)
 		}
 
 		// Use paginator to stream edge references in batches.
@@ -196,7 +223,8 @@ func (g *Graph) GetOutgoing(ctx context.Context, entityType, entityID, edgeType 
 			}
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(entityType, entityID, actualEdgeType, edgeRef.Node.Type, edgeRef.Node.ID)
+			edge := Edge{From: node, Type: actualEdgeType, To: edgeRef.Node}
+			edgeKey := edge.Key()
 			edgeKeys = append(edgeKeys, edgeKey)
 			edgeRefs = append(edgeRefs, edgeRef)
 
@@ -219,14 +247,20 @@ func (g *Graph) GetOutgoing(ctx context.Context, entityType, entityID, edgeType 
 
 // GetIncoming returns an iterator that streams incoming edges of a specific type to an entity.
 func (g *Graph) GetIncoming(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
+	node := NewNodeRef(entityType, entityID)
+	return g.GetIncomingByRef(ctx, node, edgeType)
+}
+
+// GetIncomingByRef returns an iterator that streams incoming edges of a specific type to a node.
+func (g *Graph) GetIncomingByRef(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		var prefix string
 		if edgeType == "*" {
 			// Get all incoming edges regardless of type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
+			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/", node.Type, node.ID)
 		} else {
 			// Get edges of specific type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/%s/", entityType, entityID, edgeType)
+			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/%s/", node.Type, node.ID, edgeType)
 		}
 
 		// Use paginator to stream edge references in batches.
@@ -257,7 +291,8 @@ func (g *Graph) GetIncoming(ctx context.Context, entityType, entityID, edgeType 
 			}
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(edgeRef.Node.Type, edgeRef.Node.ID, actualEdgeType, entityType, entityID)
+			edge := Edge{From: edgeRef.Node, Type: actualEdgeType, To: node}
+			edgeKey := edge.Key()
 			edgeKeys = append(edgeKeys, edgeKey)
 
 			// Process batch when we reach the paginator limit.
@@ -278,8 +313,14 @@ func (g *Graph) GetIncoming(ctx context.Context, entityType, entityID, edgeType 
 
 // GetAllOutgoing returns an iterator that streams all outgoing edges from an entity (all types).
 func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
+	node := NewNodeRef(entityType, entityID)
+	return g.GetAllOutgoingByRef(ctx, node)
+}
+
+// GetAllOutgoingByRef returns an iterator that streams all outgoing edges from a node (all types).
+func (g *Graph) GetAllOutgoingByRef(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
-		prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", entityType, entityID)
+		prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", node.Type, node.ID)
 
 		// Use paginator to stream edge references in batches without grouping by type.
 		var edgeKeys []string
@@ -305,7 +346,8 @@ func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string)
 			edgeType := extractEdgeTypeFromKey(record.Key)
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(entityType, entityID, edgeType, edgeRef.Node.Type, edgeRef.Node.ID)
+			edge := Edge{From: node, Type: edgeType, To: edgeRef.Node}
+			edgeKey := edge.Key()
 			edgeKeys = append(edgeKeys, edgeKey)
 
 			// Process batch when we reach the paginator limit.
@@ -326,8 +368,14 @@ func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string)
 
 // GetAllIncoming returns an iterator that streams all incoming edges to an entity (all types).
 func (g *Graph) GetAllIncoming(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
+	node := NewNodeRef(entityType, entityID)
+	return g.GetAllIncomingByRef(ctx, node)
+}
+
+// GetAllIncomingByRef returns an iterator that streams all incoming edges to a node (all types).
+func (g *Graph) GetAllIncomingByRef(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
-		prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", entityType, entityID)
+		prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", node.Type, node.ID)
 
 		// Use paginator to stream edge references in batches without grouping by type.
 		var edgeKeys []string
@@ -353,7 +401,8 @@ func (g *Graph) GetAllIncoming(ctx context.Context, entityType, entityID string)
 			edgeType := extractEdgeTypeFromKey(record.Key)
 
 			// Build the edge key for batch retrieval.
-			edgeKey := edgeKey(edgeRef.Node.Type, edgeRef.Node.ID, edgeType, entityType, entityID)
+			edge := Edge{From: edgeRef.Node, Type: edgeType, To: node}
+			edgeKey := edge.Key()
 			edgeKeys = append(edgeKeys, edgeKey)
 
 			// Process batch when we reach the paginator limit.
@@ -435,17 +484,13 @@ func (g *Graph) processBatchedEdges(ctx context.Context, edgeKeys []string, yiel
 	return true
 }
 
-func edgeKey(fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID string) string {
-	return fmt.Sprintf("graph/edge/%s/%s/%s/%s/%s", fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID)
-}
-
 // Individual edge reference keys for scalability.
-func outgoingEdgeRefKey(fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID string) string {
-	return fmt.Sprintf("graph/node/%s/%s/outgoing/%s/%s/%s", fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID)
+func outgoingEdgeRefKey(from NodeRef, edgeType string, to NodeRef) string {
+	return fmt.Sprintf("graph/node/%s/%s/outgoing/%s/%s/%s", from.Type, from.ID, edgeType, to.Type, to.ID)
 }
 
-func incomingEdgeRefKey(toEntityType, toEntityID, edgeType, fromEntityType, fromEntityID string) string {
-	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/%s/%s", toEntityType, toEntityID, edgeType, fromEntityType, fromEntityID)
+func incomingEdgeRefKey(to NodeRef, edgeType string, from NodeRef) string {
+	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/%s/%s", to.Type, to.ID, edgeType, from.Type, from.ID)
 }
 
 func extractEdgeTypeFromKey(key string) string {
