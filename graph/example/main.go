@@ -172,7 +172,7 @@ func run() error {
 	// 1. Get all team members and their components.
 	fmt.Println("\n1. Team Red Team members and their stats:")
 	var teamMembers []graph.Edge
-	for edge, err := range g.GetIncoming(ctx, "Team", "team1", "member_of") {
+	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Team", "team1"), "member_of") {
 		if err != nil {
 			return fmt.Errorf("failed to get team members: %w", err)
 		}
@@ -213,7 +213,7 @@ func run() error {
 	// 2. Find players who are friends and check if they're close in position.
 	fmt.Println("\n2. Friend proximity analysis:")
 	var friendships []graph.Edge
-	for edge, err := range g.GetOutgoing(ctx, "Player", "player1", "friends_with") {
+	for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("Player", "player1"), "friends_with") {
 		if err != nil {
 			return fmt.Errorf("failed to get friendships: %w", err)
 		}
@@ -241,7 +241,7 @@ func run() error {
 	// 3. Find guild members who might form alliances (not rivals).
 	fmt.Println("\n3. Potential guild alliances:")
 	var guildMembers []graph.Edge
-	for edge, err := range g.GetIncoming(ctx, "Guild", "guild1", "member_of") {
+	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Guild", "guild1"), "member_of") {
 		if err != nil {
 			return fmt.Errorf("failed to get guild members: %w", err)
 		}
@@ -258,14 +258,16 @@ func run() error {
 			player2ID := member2.From.ID
 
 			// Check if they're rivals.
-			_, isRival, err := g.GetEdge(ctx, "Player", player1ID, "rival_of", "Player", player2ID)
+			player1Node := graph.NewNodeRef("Player", player1ID)
+			player2Node := graph.NewNodeRef("Player", player2ID)
+			_, isRival, err := g.GetEdge(ctx, player1Node, "rival_of", player2Node)
 			if err != nil {
 				continue
 			}
 
 			if !isRival {
 				// Check reverse direction too.
-				_, isRivalReverse, err := g.GetEdge(ctx, "Player", player2ID, "rival_of", "Player", player1ID)
+				_, isRivalReverse, err := g.GetEdge(ctx, player2Node, "rival_of", player1Node)
 				if err != nil {
 					continue
 				}
@@ -298,7 +300,7 @@ func run() error {
 
 		// Team bonus - get team members and add team size bonus.
 		var playerTeams []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, "Player", playerID, "member_of") {
+		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("Player", playerID), "member_of") {
 			if err == nil {
 				playerTeams = append(playerTeams, edge)
 			}
@@ -308,7 +310,7 @@ func run() error {
 				if teamEdge.To.Type == "Team" {
 					// Count team members.
 					var teamMembers []graph.Edge
-					for edge, err := range g.GetIncoming(ctx, "Team", teamEdge.To.ID, "member_of") {
+					for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Team", teamEdge.To.ID), "member_of") {
 						if err == nil {
 							teamMembers = append(teamMembers, edge)
 						}

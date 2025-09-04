@@ -384,7 +384,7 @@ func TestGraphQueries(t *testing.T) {
 	t.Run("Find products in same category", func(t *testing.T) {
 		// Find what category laptop is in.
 		var laptopCategories []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, "Product", "laptop", "in_category") {
+		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("Product", "laptop"), "in_category") {
 			if err != nil {
 				t.Fatalf("failed to get laptop categories: %v", err)
 			}
@@ -399,7 +399,7 @@ func TestGraphQueries(t *testing.T) {
 
 		// Find all products in the same category.
 		var categoryProducts []graph.Edge
-		for edge, err := range g.GetIncoming(ctx, "Category", category, "in_category") {
+		for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Category", category), "in_category") {
 			if err != nil {
 				t.Fatalf("failed to get products in category: %v", err)
 			}
@@ -424,7 +424,7 @@ func TestGraphQueries(t *testing.T) {
 	t.Run("Find similar users", func(t *testing.T) {
 		// Find users who bought the same product as user1.
 		var user1Purchases []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, "User", "user1", "bought") {
+		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("User", "user1"), "bought") {
 			if err != nil {
 				t.Fatalf("failed to get user1 purchases: %v", err)
 			}
@@ -436,7 +436,7 @@ func TestGraphQueries(t *testing.T) {
 		for _, purchase := range user1Purchases {
 			// Find who else bought this product.
 			var otherBuyers []graph.Edge
-			for edge, err := range g.GetIncoming(ctx, "Product", purchase.To.ID, "bought") {
+			for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("Product", purchase.To.ID), "bought") {
 				if err != nil {
 					t.Fatalf("failed to get other buyers: %v", err)
 				}

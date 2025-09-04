@@ -12,8 +12,8 @@ import (
 
 // Edge represents a relationship between two entities.
 type Edge struct {
-	From NodeRef        `json:"from"`
-	To   NodeRef        `json:"to"`
+	From NodeRef         `json:"from"`
+	To   NodeRef         `json:"to"`
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data,omitempty"`
 }
@@ -136,15 +136,8 @@ func (g *Graph) AddEdge(ctx context.Context, edge Edge) error {
 }
 
 // RemoveEdge removes a directed edge.
-func (g *Graph) RemoveEdge(ctx context.Context, fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID string) error {
-	from := NewNodeRef(fromEntityType, fromEntityID)
-	to := NewNodeRef(toEntityType, toEntityID)
-	return g.RemoveEdgeByRef(ctx, from, edgeType, to)
-}
-
-// RemoveEdgeByRef removes a directed edge using NodeRef parameters.
-func (g *Graph) RemoveEdgeByRef(ctx context.Context, from NodeRef, edgeType string, to NodeRef) error {
-	edge := Edge{From: from, Type: edgeType, To: to}
+func (g *Graph) RemoveEdge(ctx context.Context, from NodeRef, edgeType string, to NodeRef) error {
+	edge := NewEdge(from, to, edgeType, nil)
 	edgeKey := edge.Key()
 	outgoingRefKey := outgoingEdgeRefKey(from, edgeType, to)
 	incomingRefKey := incomingEdgeRefKey(to, edgeType, from)
@@ -160,14 +153,7 @@ func (g *Graph) RemoveEdgeByRef(ctx context.Context, from NodeRef, edgeType stri
 }
 
 // GetEdge retrieves a specific edge.
-func (g *Graph) GetEdge(ctx context.Context, fromEntityType, fromEntityID, edgeType, toEntityType, toEntityID string) (edge Edge, ok bool, err error) {
-	from := NewNodeRef(fromEntityType, fromEntityID)
-	to := NewNodeRef(toEntityType, toEntityID)
-	return g.GetEdgeByRef(ctx, from, edgeType, to)
-}
-
-// GetEdgeByRef retrieves a specific edge using NodeRef parameters.
-func (g *Graph) GetEdgeByRef(ctx context.Context, from NodeRef, edgeType string, to NodeRef) (edge Edge, ok bool, err error) {
+func (g *Graph) GetEdge(ctx context.Context, from NodeRef, edgeType string, to NodeRef) (edge Edge, ok bool, err error) {
 	searchEdge := Edge{From: from, Type: edgeType, To: to}
 	key := searchEdge.Key()
 	_, ok, err = g.store.Get(ctx, key, &edge)
@@ -177,14 +163,8 @@ func (g *Graph) GetEdgeByRef(ctx context.Context, from NodeRef, edgeType string,
 	return edge, ok, nil
 }
 
-// GetOutgoing returns an iterator that streams outgoing edges of a specific type from an entity.
-func (g *Graph) GetOutgoing(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
-	node := NewNodeRef(entityType, entityID)
-	return g.GetOutgoingByRef(ctx, node, edgeType)
-}
-
-// GetOutgoingByRef returns an iterator that streams outgoing edges of a specific type from a node.
-func (g *Graph) GetOutgoingByRef(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
+// GetOutgoing returns an iterator that streams outgoing edges of a specific type from a node.
+func (g *Graph) GetOutgoing(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		var prefix string
 		if edgeType == "*" {
@@ -245,14 +225,8 @@ func (g *Graph) GetOutgoingByRef(ctx context.Context, node NodeRef, edgeType str
 	}
 }
 
-// GetIncoming returns an iterator that streams incoming edges of a specific type to an entity.
-func (g *Graph) GetIncoming(ctx context.Context, entityType, entityID, edgeType string) iter.Seq2[Edge, error] {
-	node := NewNodeRef(entityType, entityID)
-	return g.GetIncomingByRef(ctx, node, edgeType)
-}
-
-// GetIncomingByRef returns an iterator that streams incoming edges of a specific type to a node.
-func (g *Graph) GetIncomingByRef(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
+// GetIncoming returns an iterator that streams incoming edges of a specific type to a node.
+func (g *Graph) GetIncoming(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		var prefix string
 		if edgeType == "*" {
@@ -311,14 +285,8 @@ func (g *Graph) GetIncomingByRef(ctx context.Context, node NodeRef, edgeType str
 	}
 }
 
-// GetAllOutgoing returns an iterator that streams all outgoing edges from an entity (all types).
-func (g *Graph) GetAllOutgoing(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
-	node := NewNodeRef(entityType, entityID)
-	return g.GetAllOutgoingByRef(ctx, node)
-}
-
-// GetAllOutgoingByRef returns an iterator that streams all outgoing edges from a node (all types).
-func (g *Graph) GetAllOutgoingByRef(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
+// GetAllOutgoing returns an iterator that streams all outgoing edges from a node (all types).
+func (g *Graph) GetAllOutgoing(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		prefix := fmt.Sprintf("graph/node/%s/%s/outgoing/", node.Type, node.ID)
 
@@ -366,14 +334,8 @@ func (g *Graph) GetAllOutgoingByRef(ctx context.Context, node NodeRef) iter.Seq2
 	}
 }
 
-// GetAllIncoming returns an iterator that streams all incoming edges to an entity (all types).
-func (g *Graph) GetAllIncoming(ctx context.Context, entityType, entityID string) iter.Seq2[Edge, error] {
-	node := NewNodeRef(entityType, entityID)
-	return g.GetAllIncomingByRef(ctx, node)
-}
-
-// GetAllIncomingByRef returns an iterator that streams all incoming edges to a node (all types).
-func (g *Graph) GetAllIncomingByRef(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
+// GetAllIncoming returns an iterator that streams all incoming edges to a node (all types).
+func (g *Graph) GetAllIncoming(ctx context.Context, node NodeRef) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
 		prefix := fmt.Sprintf("graph/node/%s/%s/incoming/", node.Type, node.ID)
 

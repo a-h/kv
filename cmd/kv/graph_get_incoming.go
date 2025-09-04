@@ -22,16 +22,18 @@ func (c *GraphGetIncomingCommand) Run(ctx context.Context, g GlobalFlags) error 
 
 	gr := graph.New(store)
 
+	node := graph.NewNodeRef(c.EntityType, c.EntityID)
+
 	var edges []graph.Edge
 	if c.EdgeType == "*" {
-		for edge, err := range gr.GetAllIncoming(ctx, c.EntityType, c.EntityID) {
+		for edge, err := range gr.GetAllIncoming(ctx, node) {
 			if err != nil {
 				return fmt.Errorf("failed to get incoming edges: %w", err)
 			}
 			edges = append(edges, edge)
 		}
 	} else {
-		for edge, err := range gr.GetIncoming(ctx, c.EntityType, c.EntityID, c.EdgeType) {
+		for edge, err := range gr.GetIncoming(ctx, node, c.EdgeType) {
 			if err != nil {
 				return fmt.Errorf("failed to get incoming edges: %w", err)
 			}

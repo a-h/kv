@@ -65,7 +65,7 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 		var edges []Edge
 
 		if len(opts.EdgeTypes) == 0 {
-			for edge, err := range g.GetAllOutgoing(ctx, currentNode.Type, currentNode.ID) {
+			for edge, err := range g.GetAllOutgoing(ctx, currentNode) {
 				if err != nil {
 					return nil, err
 				}
@@ -73,7 +73,7 @@ func (g *Graph) BreadthFirstSearch(ctx context.Context, startEntityType, startEn
 			}
 		} else {
 			for _, edgeType := range opts.EdgeTypes {
-				for edge, err := range g.GetOutgoing(ctx, currentNode.Type, currentNode.ID, edgeType) {
+				for edge, err := range g.GetOutgoing(ctx, currentNode, edgeType) {
 					if err != nil {
 						return nil, err
 					}
@@ -152,7 +152,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 		var edges []Edge
 
 		if len(opts.EdgeTypes) == 0 {
-			for edge, err := range g.GetAllOutgoing(ctx, currentNode.Type, currentNode.ID) {
+			for edge, err := range g.GetAllOutgoing(ctx, currentNode) {
 				if err != nil {
 					return nil, err
 				}
@@ -160,7 +160,7 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 			}
 		} else {
 			for _, edgeType := range opts.EdgeTypes {
-				for edge, err := range g.GetOutgoing(ctx, currentNode.Type, currentNode.ID, edgeType) {
+				for edge, err := range g.GetOutgoing(ctx, currentNode, edgeType) {
 					if err != nil {
 						return nil, err
 					}
@@ -195,9 +195,12 @@ func (g *Graph) FindShortestPath(ctx context.Context, fromEntityType, fromEntity
 
 // FindMutualConnections finds entities that are connected to both given entities.
 func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1ID, entity2Type, entity2ID, connectionType string) ([]NodeRef, error) {
+	entity1 := NewNodeRef(entity1Type, entity1ID)
+	entity2 := NewNodeRef(entity2Type, entity2ID)
+	
 	// Get all entities that entity1 connects to.
 	var edges1 []Edge
-	for edge, err := range g.GetOutgoing(ctx, entity1Type, entity1ID, connectionType) {
+	for edge, err := range g.GetOutgoing(ctx, entity1, connectionType) {
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +209,7 @@ func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1I
 
 	// Get all entities that entity2 connects to.
 	var edges2 []Edge
-	for edge, err := range g.GetOutgoing(ctx, entity2Type, entity2ID, connectionType) {
+	for edge, err := range g.GetOutgoing(ctx, entity2, connectionType) {
 		if err != nil {
 			return nil, err
 		}
@@ -233,14 +236,16 @@ func (g *Graph) FindMutualConnections(ctx context.Context, entity1Type, entity1I
 
 // GetDegree returns the in-degree and out-degree of a node for a specific edge type.
 func (g *Graph) GetDegree(ctx context.Context, entityType, entityID, edgeType string) (inDegree, outDegree int, err error) {
-	for _, err := range g.GetOutgoing(ctx, entityType, entityID, edgeType) {
+	node := NewNodeRef(entityType, entityID)
+	
+	for _, err := range g.GetOutgoing(ctx, node, edgeType) {
 		if err != nil {
 			return 0, 0, err
 		}
 		outDegree++
 	}
 
-	for _, err := range g.GetIncoming(ctx, entityType, entityID, edgeType) {
+	for _, err := range g.GetIncoming(ctx, node, edgeType) {
 		if err != nil {
 			return 0, 0, err
 		}
@@ -252,13 +257,14 @@ func (g *Graph) GetDegree(ctx context.Context, entityType, entityID, edgeType st
 
 // GetNeighbors returns all neighbors (both incoming and outgoing) of a node.
 func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, opts TraversalOptions) ([]NodeRef, error) {
+	node := NewNodeRef(entityType, entityID)
 	neighbors := make(map[string]NodeRef)
 
 	// Get outgoing neighbors.
 	var outgoingEdges []Edge
 
 	if len(opts.EdgeTypes) == 0 {
-		for edge, err := range g.GetAllOutgoing(ctx, entityType, entityID) {
+		for edge, err := range g.GetAllOutgoing(ctx, node) {
 			if err != nil {
 				return nil, err
 			}
@@ -266,7 +272,7 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 		}
 	} else {
 		for _, edgeType := range opts.EdgeTypes {
-			for edge, err := range g.GetOutgoing(ctx, entityType, entityID, edgeType) {
+			for edge, err := range g.GetOutgoing(ctx, node, edgeType) {
 				if err != nil {
 					return nil, err
 				}
@@ -285,7 +291,7 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 	var incomingEdges []Edge
 
 	if len(opts.EdgeTypes) == 0 {
-		for edge, err := range g.GetAllIncoming(ctx, entityType, entityID) {
+		for edge, err := range g.GetAllIncoming(ctx, node) {
 			if err != nil {
 				return nil, err
 			}
@@ -293,7 +299,7 @@ func (g *Graph) GetNeighbors(ctx context.Context, entityType, entityID string, o
 		}
 	} else {
 		for _, edgeType := range opts.EdgeTypes {
-			for edge, err := range g.GetIncoming(ctx, entityType, entityID, edgeType) {
+			for edge, err := range g.GetIncoming(ctx, node, edgeType) {
 				if err != nil {
 					return nil, err
 				}

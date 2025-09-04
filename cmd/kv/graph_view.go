@@ -139,7 +139,8 @@ func (c *GraphViewCommand) collectEdges(ctx context.Context, gr *graph.Graph) ([
 			return nil, fmt.Errorf("getting all entities of a type is not yet supported - please specify both entity type and ID, or use '*' for both")
 		} else {
 			// Get edges for specific entity.
-			for edge, err := range gr.GetOutgoing(ctx, c.EntityType, c.EntityID, c.EdgeType) {
+			node := graph.NewNodeRef(c.EntityType, c.EntityID)
+			for edge, err := range gr.GetOutgoing(ctx, node, c.EdgeType) {
 				if err != nil {
 					return nil, fmt.Errorf("failed to get outgoing edges: %w", err)
 				}
@@ -147,7 +148,7 @@ func (c *GraphViewCommand) collectEdges(ctx context.Context, gr *graph.Graph) ([
 			}
 
 			// For visualization, also include incoming edges to show the full picture.
-			for edge, err := range gr.GetIncoming(ctx, c.EntityType, c.EntityID, c.EdgeType) {
+			for edge, err := range gr.GetIncoming(ctx, node, c.EdgeType) {
 				if err != nil {
 					return nil, fmt.Errorf("failed to get incoming edges: %w", err)
 				}

@@ -114,7 +114,9 @@ func TestGraph(t *testing.T) {
 		}
 
 		// Retrieve specific edge.
-		retrievedEdge, ok, err := g.GetEdge(ctx, "User", "user1", "follows", "User", "user2")
+		user1Node := graph.NewNodeRef("User", "user1")
+		user2Node := graph.NewNodeRef("User", "user2")
+		retrievedEdge, ok, err := g.GetEdge(ctx, user1Node, "follows", user2Node)
 		if err != nil {
 			t.Fatalf("failed to get edge: %v", err)
 		}
@@ -132,9 +134,10 @@ func TestGraph(t *testing.T) {
 	})
 
 	t.Run("Get outgoing edges", func(t *testing.T) {
+		user1Node := graph.NewNodeRef("User", "user1")
 		// Get all users that user1 follows.
 		var followEdges []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, "User", "user1", "follows") {
+		for edge, err := range g.GetOutgoing(ctx, user1Node, "follows") {
 			if err != nil {
 				t.Fatalf("failed to get outgoing follow edges: %v", err)
 			}
@@ -149,7 +152,7 @@ func TestGraph(t *testing.T) {
 
 		// Get all posts authored by user1.
 		var authoredEdges []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, "User", "user1", "authored") {
+		for edge, err := range g.GetOutgoing(ctx, user1Node, "authored") {
 			if err != nil {
 				t.Fatalf("failed to get outgoing authored edges: %v", err)
 			}
@@ -164,9 +167,10 @@ func TestGraph(t *testing.T) {
 	})
 
 	t.Run("Get incoming edges", func(t *testing.T) {
+		user2Node := graph.NewNodeRef("User", "user2")
 		// Get all users who follow user2.
 		var followersEdges []graph.Edge
-		for edge, err := range g.GetIncoming(ctx, "User", "user2", "follows") {
+		for edge, err := range g.GetIncoming(ctx, user2Node, "follows") {
 			if err != nil {
 				t.Fatalf("failed to get incoming follow edges: %v", err)
 			}
@@ -181,7 +185,8 @@ func TestGraph(t *testing.T) {
 
 		// Get who authored post1.
 		var authorEdges []graph.Edge
-		for edge, err := range g.GetIncoming(ctx, "Post", "post1", "authored") {
+		post1Node := graph.NewNodeRef("Post", "post1")
+		for edge, err := range g.GetIncoming(ctx, post1Node, "authored") {
 			if err != nil {
 				t.Fatalf("failed to get incoming authored edges: %v", err)
 			}
@@ -198,7 +203,8 @@ func TestGraph(t *testing.T) {
 	t.Run("Get all edges for entity", func(t *testing.T) {
 		// Get all outgoing edges from user1.
 		var allOutgoing []graph.Edge
-		for edge, err := range g.GetAllOutgoing(ctx, "User", "user1") {
+		user1Node := graph.NewNodeRef("User", "user1")
+		for edge, err := range g.GetAllOutgoing(ctx, user1Node) {
 			if err != nil {
 				t.Fatalf("failed to get all outgoing edges: %v", err)
 			}
@@ -210,7 +216,8 @@ func TestGraph(t *testing.T) {
 
 		// Get all incoming edges to post1.
 		var allIncoming []graph.Edge
-		for edge, err := range g.GetAllIncoming(ctx, "Post", "post1") {
+		post1Node := graph.NewNodeRef("Post", "post1")
+		for edge, err := range g.GetAllIncoming(ctx, post1Node) {
 			if err != nil {
 				t.Fatalf("failed to get all incoming edges: %v", err)
 			}
@@ -223,12 +230,14 @@ func TestGraph(t *testing.T) {
 
 	t.Run("Remove edges", func(t *testing.T) {
 		// Remove the follow relationship.
-		if err := g.RemoveEdge(ctx, "User", "user1", "follows", "User", "user2"); err != nil {
+		user1Node := graph.NewNodeRef("User", "user1")
+		user2Node := graph.NewNodeRef("User", "user2")
+		if err := g.RemoveEdge(ctx, user1Node, "follows", user2Node); err != nil {
 			t.Fatalf("failed to remove follow edge: %v", err)
 		}
 
 		// Verify it's gone.
-		_, ok, err := g.GetEdge(ctx, "User", "user1", "follows", "User", "user2")
+		_, ok, err := g.GetEdge(ctx, user1Node, "follows", user2Node)
 		if err != nil {
 			t.Fatalf("failed to check edge existence: %v", err)
 		}
@@ -238,7 +247,7 @@ func TestGraph(t *testing.T) {
 
 		// Verify outgoing edges list is updated.
 		var followEdges []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, "User", "user1", "follows") {
+		for edge, err := range g.GetOutgoing(ctx, user1Node, "follows") {
 			if err != nil {
 				t.Fatalf("failed to get outgoing follow edges: %v", err)
 			}
@@ -250,7 +259,7 @@ func TestGraph(t *testing.T) {
 
 		// Verify incoming edges list is updated.
 		var followersEdges []graph.Edge
-		for edge, err := range g.GetIncoming(ctx, "User", "user2", "follows") {
+		for edge, err := range g.GetIncoming(ctx, user2Node, "follows") {
 			if err != nil {
 				t.Fatalf("failed to get incoming follow edges: %v", err)
 			}
@@ -317,7 +326,8 @@ func TestGraphTraversal(t *testing.T) {
 
 	t.Run("Find who Alice follows", func(t *testing.T) {
 		var following []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, "User", "alice", "follows") {
+		aliceNode := graph.NewNodeRef("User", "alice")
+		for edge, err := range g.GetOutgoing(ctx, aliceNode, "follows") {
 			if err != nil {
 				t.Fatalf("failed to get Alice's following: %v", err)
 			}
@@ -340,7 +350,8 @@ func TestGraphTraversal(t *testing.T) {
 
 	t.Run("Find Alice's followers", func(t *testing.T) {
 		var followers []graph.Edge
-		for edge, err := range g.GetIncoming(ctx, "User", "alice", "follows") {
+		aliceNode := graph.NewNodeRef("User", "alice")
+		for edge, err := range g.GetIncoming(ctx, aliceNode, "follows") {
 			if err != nil {
 				t.Fatalf("failed to get Alice's followers: %v", err)
 			}
@@ -411,7 +422,8 @@ func TestStreamingMethods(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
-		for edge, err := range g.GetOutgoing(ctx, "User", "alice", "follows") {
+		aliceNode := graph.NewNodeRef("User", "alice")
+		for edge, err := range g.GetOutgoing(ctx, aliceNode, "follows") {
 			if err != nil {
 				collectedErrors = append(collectedErrors, err)
 				continue
@@ -436,7 +448,8 @@ func TestStreamingMethods(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
-		for edge, err := range g.GetIncoming(ctx, "User", "alice", "follows") {
+		aliceNode := graph.NewNodeRef("User", "alice")
+		for edge, err := range g.GetIncoming(ctx, aliceNode, "follows") {
 			if err != nil {
 				collectedErrors = append(collectedErrors, err)
 				continue
@@ -461,7 +474,8 @@ func TestStreamingMethods(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
-		for edge, err := range g.GetAllOutgoing(ctx, "User", "alice") {
+		aliceNode := graph.NewNodeRef("User", "alice")
+		for edge, err := range g.GetAllOutgoing(ctx, aliceNode) {
 			if err != nil {
 				collectedErrors = append(collectedErrors, err)
 				continue
@@ -498,7 +512,8 @@ func TestStreamingMethods(t *testing.T) {
 		var collectedEdges []graph.Edge
 		var collectedErrors []error
 
-		for edge, err := range g.GetAllIncoming(ctx, "User", "alice") {
+		aliceNode := graph.NewNodeRef("User", "alice")
+		for edge, err := range g.GetAllIncoming(ctx, aliceNode) {
 			if err != nil {
 				collectedErrors = append(collectedErrors, err)
 				continue
@@ -545,7 +560,8 @@ func TestStreamingMethods(t *testing.T) {
 		cancel() // Cancel immediately.
 
 		var collectedErrors []error
-		for _, err := range g.GetOutgoing(cancelCtx, "User", "alice", "follows") {
+		aliceNode := graph.NewNodeRef("User", "alice")
+		for _, err := range g.GetOutgoing(cancelCtx, aliceNode, "follows") {
 			if err != nil {
 				collectedErrors = append(collectedErrors, err)
 				break // Exit on first error.
