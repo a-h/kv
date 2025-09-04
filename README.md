@@ -1,8 +1,32 @@
 # kv
 
-A KV store on top of sqlite / rqlite / postgres.
+A KV store on top of sqlite / rqlite / postgres with graph database functionality, task scheduling, and built-in pagination support.
 
 It can be used as a CLI tool, or as a Go library.
+**Prerequisites for visualization:**
+
+- Install Graphviz: `brew install graphviz` (macOS) or `apt-get install graphviz` (Ubuntu)
+- The `dot` command converts DOT files to various image formats (PNG, SVG, PDF)
+
+**Alternative visualization options:**
+
+- Use online tools like [Graphviz Online](https://dreampuf.github.io/GraphvizOnline/)
+- Import Mermaid format into GitHub/GitLab markdown or [Mermaid Live Editor](https://mermaid.live/)
+- Use VS Code extensions for DOT/Mermaid preview
+
+## Library Usage
+
+The library provides three main interfaces:
+
+- `Store` - Key-value operations, streaming, and locking
+- `Scheduler` - Task scheduling and coordination
+- `Graph` - Graph database functionality for relationships between entities
+
+The Store and Scheduler interfaces have 3 implementations:
+
+- `sqlitekv` - SQLite implementation
+- `rqlitekv` - RQLite implementation  
+- `postgreskv` - PostgreSQL implementation
 
 ## CLI
 
@@ -67,6 +91,15 @@ kv task get <task-id>
 kv task cancel <task-id>
 kv task run [--runner-id=<id>] [--poll-interval=10s] [--lock-duration=5m]
 
+# Graph operations:
+kv graph add-edge <from-type> <from-id> <to-type> <to-id> <edge-type> [<properties>]
+kv graph get-edge <from-type> <from-id> <to-type> <to-id> <edge-type>
+kv graph get-outgoing <entity-type> <entity-id> [<edge-type>]
+kv graph get-incoming <entity-type> <entity-id> [<edge-type>]
+kv graph remove-edge <from-type> <from-id> <to-type> <to-id> <edge-type>
+kv graph find-path <from-type> <from-id> <to-type> <to-id> [<edge-type>]
+kv graph view
+
 # Patch a key:
 echo '{"field": "value"}' | kv patch <key>
 
@@ -75,6 +108,120 @@ kv benchmark get [<x> [<n> [<w>]]]
 kv benchmark put [<n> [<w>]]
 kv benchmark patch [<n> [<w>]]
 ```
+
+### Graph Examples
+
+```bash
+# Store some entities first.
+echo '{"name": "Alice", "age": 30}' | kv put user/alice
+echo '{"name": "Bob", "age": 25}' | kv put user/bob
+echo '{"title": "Hello World", "author": "alice"}' | kv put post/1
+
+# Create relationships between entities.
+echo '{"since": "2024-01-01"}' | kv graph add-edge User alice User bob follows
+echo '{"timestamp": "2024-01-01T10:00:00Z"}' | kv graph add-edge User alice Post 1 authored
+
+# Query relationships.
+kv graph get-edge User alice User bob follows
+kv graph get-outgoing User alice follows
+kv graph get-incoming User bob follows
+
+# Find paths between entities.
+kv graph find-path User alice Post 1 authored
+
+# Remove relationships.
+kv graph remove-edge User alice User bob follows
+
+# Visualize the graph.
+kv graph view
+```
+
+### Complete Graph Example with Visualization
+
+Here's a complete example of building a social network graph and generating a PNG visualization:
+
+```bash
+# Initialize the store.
+kv init
+
+# Create user entities.
+echo '{"name": "Alice", "bio": "Software Engineer"}' | kv put user/alice
+echo '{"name": "Bob", "bio": "Data Scientist"}' | kv put user/bob  
+echo '{"name": "Charlie", "bio": "Product Manager"}' | kv put user/charlie
+echo '{"name": "Diana", "bio": "Designer"}' | kv put user/diana
+
+# Create post entities.
+echo '{"title": "Hello World", "content": "My first post"}' | kv put post/1
+echo '{"title": "Graph Databases", "content": "Exploring relationships"}' | kv put post/2
+echo '{"title": "Design Principles", "content": "UX best practices"}' | kv put post/3
+
+# Create social relationships.
+echo '{"since": "2024-01-15", "status": "active"}' | kv graph add-edge User alice User bob follows
+echo '{"since": "2024-02-01", "status": "active"}' | kv graph add-edge User alice User charlie follows
+echo '{"since": "2024-01-20", "status": "active"}' | kv graph add-edge User bob User diana follows
+echo '{"since": "2024-02-10", "status": "active"}' | kv graph add-edge User charlie User alice follows
+
+# Create authorship relationships.
+echo '{"timestamp": "2024-01-01T10:00:00Z", "draft_count": 3}' | kv graph add-edge User alice Post 1 authored
+echo '{"timestamp": "2024-01-15T14:30:00Z", "draft_count": 5}' | kv graph add-edge User bob Post 2 authored
+echo '{"timestamp": "2024-02-01T09:15:00Z", "draft_count": 2}' | kv graph add-edge User diana Post 3 authored
+
+# Create engagement relationships.
+echo '{"timestamp": "2024-01-02T11:00:00Z", "reaction": "love"}' | kv graph add-edge User bob Post 1 liked
+echo '{"timestamp": "2024-01-16T15:00:00Z", "reaction": "thumbs_up"}' | kv graph add-edge User alice Post 2 liked
+echo '{"timestamp": "2024-02-02T10:30:00Z", "reaction": "love"}' | kv graph add-edge User charlie Post 3 liked
+
+# Generate DOT visualization and convert to PNG.
+kv graph view "*" "*" > social_network.dot
+dot -Tpng social_network.dot -o social_network.png
+
+# View specific subgraphs.
+# All relationships from Alice:
+kv graph view User alice > alice_network.dot
+dot -Tpng alice_network.dot -o alice_network.png
+
+# Only "follows" relationships:
+kv graph view "*" "*" --edge-type=follows > follows_only.dot  
+dot -Tpng follows_only.dot -o follows_only.png
+
+# Generate Mermaid format (for web/markdown):
+kv graph view "*" "*" --format=mermaid > social_network.mmd
+```
+
+The generated DOT file will look like this:
+
+```dot
+digraph G {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+
+  "Post:1";
+  "Post:2"; 
+  "Post:3";
+  "User:alice";
+  "User:bob";
+  "User:charlie";
+  "User:diana";
+
+  "User:alice" -> "Post:1" [label="authored\n{\"timestamp\": \"2024-01-01T10:00:00Z\", \"draft_count\": 3}"];
+  "User:alice" -> "User:bob" [label="follows\n{\"since\": \"2024-01-15\", \"status\": \"active\"}"];
+  "User:alice" -> "User:charlie" [label="follows\n{\"since\": \"2024-02-01\", \"status\": \"active\"}"];
+  "User:bob" -> "Post:2" [label="authored\n{\"timestamp\": \"2024-01-15T14:30:00Z\", \"draft_count\": 5}"];
+  "User:bob" -> "User:diana" [label="follows\n{\"since\": \"2024-01-20\", \"status\": \"active\"}"];
+  "User:charlie" -> "User:alice" [label="follows\n{\"since\": \"2024-02-10\", \"status\": \"active\"}"];
+}
+```
+
+**Prerequisites for visualization:**
+
+- Install Graphviz: `brew install graphviz` (macOS) or `apt-get install graphviz` (Ubuntu)
+- The `dot` command converts DOT files to various image formats (PNG, SVG, PDF)
+
+**Alternative visualization options:**
+
+- Use online tools like [Graphviz Online](https://dreampuf.github.io/GraphvizOnline/)
+- Import Mermaid format into GitHub/GitLab markdown or [Mermaid Live Editor](https://mermaid.live/)
+- Use VS Code extensions for DOT/Mermaid preview
 
 ### CLI Usage
 
@@ -113,6 +260,13 @@ Commands:
   task get <id>                            Get a task by ID.
   task cancel <id>                         Cancel a task by ID.
   task run                                 Run task runner to process scheduled tasks.
+  graph add-edge <from-type> <from-id> <to-type> <to-id> <edge-type> Add an edge between two entities.
+  graph get-edge <from-type> <from-id> <to-type> <to-id> <edge-type> Get a specific edge.
+  graph get-outgoing <entity-type> <entity-id> [<edge-type>] Get outgoing edges from an entity.
+  graph get-incoming <entity-type> <entity-id> [<edge-type>] Get incoming edges to an entity.
+  graph remove-edge <from-type> <from-id> <to-type> <to-id> <edge-type> Remove an edge.
+  graph find-path <from-type> <from-id> <to-type> <to-id> [<edge-type>] Find shortest path.
+  graph view                               Generate graph visualization output.
   benchmark get [<x> [<n> [<w>]]]          Benchmark getting records.
   benchmark put [<n> [<w>]]                Benchmark putting records.
   benchmark patch [<n> [<w>]]              Benchmark patching records.
@@ -120,18 +274,77 @@ Commands:
 Run "kv <command> --help" for more information on a command.
 ```
 
-## Library Usage
+### Pagination
 
-The library provides two main interfaces:
+Most query operations support pagination using `offset` and `limit` parameters to handle large datasets efficiently:
 
-* `Store` - Key-value operations, streaming, and locking
-* `Scheduler` - Task scheduling and coordination
+```go
+// Get keys with pagination.
+rows, err := store.GetPrefix(ctx, "user:", 0, 100)  // First 100 records
+rows, err = store.GetPrefix(ctx, "user:", 100, 100) // Next 100 records
 
-Both interfaces have 3 implementations:
+// List keys with pagination.
+rows, err := store.List(ctx, 0, 50)    // First 50 keys
+rows, err = store.List(ctx, 50, 50)    // Next 50 keys
 
-* `sqlitekv` - SQLite implementation
-* `rqlitekv` - RQLite implementation  
-* `postgreskv` - PostgreSQL implementation
+// Range queries with pagination.
+rows, err := store.GetRange(ctx, "a", "m", 0, 1000)  // First 1000 keys in range
+
+// Task listing with pagination.
+tasks, err := scheduler.List(ctx, kv.TaskStatusPending, "", 0, 20) // First 20 pending tasks
+```
+
+Operations that support pagination:
+
+- `GetPrefix()` - Get keys by prefix
+- `GetRange()` - Get keys in range
+- `List()` - List all keys  
+- `DeletePrefix()` - Delete keys by prefix
+- `DeleteRange()` - Delete keys in range
+- `Stream()` - Get stream records
+- `Scheduler.List()` - List tasks
+
+## Graph Database
+
+The `graph` package provides graph database functionality on top of the KV store, allowing you to model and query relationships between entities:
+
+```go
+import "github.com/a-h/kv/graph"
+
+// Create graph instance.
+g := graph.New(store)
+
+// Add entities to the store first.
+store.Put(ctx, "user/alice", -1, User{ID: "alice", Name: "Alice"})
+store.Put(ctx, "user/bob", -1, User{ID: "bob", Name: "Bob"})
+
+// Create relationships.
+alice := graph.NewNodeRef("alice", "User")
+bob := graph.NewNodeRef("bob", "User")
+
+followEdge := graph.NewEdge(alice, bob, "follows", json.RawMessage(`{"since": "2024-01-01"}`))
+err := g.AddEdge(ctx, followEdge)
+
+// Query relationships.
+for edge, err := range g.GetOutgoing(ctx, alice, "follows") {
+    if err != nil {
+        break
+    }
+    fmt.Printf("Alice follows: %s\n", edge.To.ID)
+}
+
+// Find shortest path between entities.
+path, found, err := g.FindShortestPath(ctx, alice, bob, "follows")
+```
+
+Key features:
+
+- **Directed edges** with typed relationships
+- **Edge properties** using JSON metadata
+- **Efficient lookups** for incoming/outgoing edges
+- **Graph traversal** algorithms (BFS, shortest path)
+- **Pagination support** for large graphs
+- **Batch operations** for performance
 
 ### Simple Store Example
 
@@ -296,11 +509,11 @@ For recurring/cron-style scheduling, clients can implement their own schedulers 
 
 ### Task States
 
-* `pending` - Task is waiting to be executed
-* `running` - Task is currently being processed by a runner
-* `completed` - Task finished successfully
-* `failed` - Task failed after exhausting retries
-* `cancelled` - Task was manually cancelled
+- `pending` - Task is waiting to be executed
+- `running` - Task is currently being processed by a runner
+- `completed` - Task finished successfully
+- `failed` - Task failed after exhausting retries
+- `cancelled` - Task was manually cancelled
 
 ### Creating Tasks
 
@@ -382,8 +595,8 @@ kv task run --poll-interval=5s --lock-duration=2m
 
 The CLI task runner includes these example handlers:
 
-* `log` - Logs the task payload to stdout
-* `echo` - Echoes the task payload
+- `log` - Logs the task payload to stdout
+- `echo` - Echoes the task payload
 
 ### Implementing Cron Scheduling
 
@@ -422,10 +635,10 @@ func runCronScheduler(ctx context.Context, store kv.Store, scheduler kv.Schedule
 
 Tasks use the same locking mechanism as stream consumers to ensure:
 
-* Only one runner processes each task
-* Failed runners don't block tasks indefinitely
-* Automatic retry with exponential backoff
-* Configurable timeouts and retry limits
+- Only one runner processes each task
+- Failed runners don't block tasks indefinitely
+- Automatic retry with exponential backoff
+- Configurable timeouts and retry limits
 
 ## Tasks
 
