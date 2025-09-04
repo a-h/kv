@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 
 	"github.com/a-h/kv"
 	"github.com/a-h/kv/graph"
@@ -45,18 +44,24 @@ type Guild struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	ctx := context.Background()
 
 	// Initialize store.
 	pool, err := sqlitex.NewPool("file:example.db?mode=rwc", sqlitex.PoolOptions{})
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to create pool: %w", err)
 	}
 	defer pool.Close()
 
 	store := sqlitekv.NewStore(pool)
 	if err := store.Init(ctx); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to init store: %w", err)
 	}
 
 	// Initialize graph.
@@ -76,14 +81,14 @@ func main() {
 	// Store entities.
 	for _, player := range players {
 		if err := store.Put(ctx, "player/"+player.ID, -1, player); err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to store player %s: %w", player.ID, err)
 		}
 	}
 	if err := store.Put(ctx, "team/"+team.ID, -1, team); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to store team %s: %w", team.ID, err)
 	}
 	if err := store.Put(ctx, "guild/"+guild.ID, -1, guild); err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("failed to store guild %s: %w", guild.ID, err)
 	}
 
 	// ECS: Add components to entities.
@@ -100,7 +105,7 @@ func main() {
 
 	for key, component := range components {
 		if err := store.Put(ctx, key, -1, component); err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to store component %s: %w", key, err)
 		}
 	}
 
@@ -152,7 +157,7 @@ func main() {
 
 	for _, rel := range relationships {
 		if err := g.AddEdge(ctx, rel); err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to add edge: %w", err)
 		}
 	}
 
@@ -164,7 +169,7 @@ func main() {
 	var teamMembers []graph.Edge
 	for edge, err := range g.GetIncoming(ctx, "Team", "team1", "member_of") {
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to get team members: %w", err)
 		}
 		teamMembers = append(teamMembers, edge)
 	}
@@ -176,7 +181,7 @@ func main() {
 		// Get player's components.
 		playerComponents, err := store.GetPrefix(ctx, "entity/"+playerID+"/", 0, -1)
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to get player components for %s: %w", playerID, err)
 		}
 
 		for _, component := range playerComponents {
@@ -205,7 +210,7 @@ func main() {
 	var friendships []graph.Edge
 	for edge, err := range g.GetOutgoing(ctx, "Player", "player1", "friends_with") {
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to get friendships: %w", err)
 		}
 		friendships = append(friendships, edge)
 	}
@@ -233,7 +238,7 @@ func main() {
 	var guildMembers []graph.Edge
 	for edge, err := range g.GetIncoming(ctx, "Guild", "guild1", "member_of") {
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to get guild members: %w", err)
 		}
 		guildMembers = append(guildMembers, edge)
 	}
@@ -322,9 +327,10 @@ func main() {
 
 	fmt.Println("\n=== Example Complete ===")
 
-	// Demonstrate streaming functionality.
-	fmt.Println("\n" + strings.Repeat("=", 50))
-	StreamingDemo()
+	// Note: The range-over patterns used throughout this example (e.g., g.GetIncoming, g.GetOutgoing)
+	// demonstrate the streaming graph APIs that provide real-time iteration over graph data.
+
+	return nil
 }
 
 func abs(x int) int {
