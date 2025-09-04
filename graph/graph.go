@@ -147,14 +147,7 @@ func (g *Graph) GetEdge(ctx context.Context, from NodeRef, edgeType string, to N
 // GetOutgoing returns an iterator that streams outgoing edges of a specific type from a node.
 func (g *Graph) GetOutgoing(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
-		var prefix string
-		if edgeType == "*" {
-			// Get all outgoing edges regardless of type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/", node.Type, node.ID)
-		} else {
-			// Get edges of specific type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/outgoing/%s/", node.Type, node.ID, edgeType)
-		}
+		prefix := outgoingEdgeRefPrefix(node, edgeType)
 
 		// Use paginator to stream edge references in batches.
 		var edgeKeys []string
@@ -209,14 +202,7 @@ func (g *Graph) GetOutgoing(ctx context.Context, node NodeRef, edgeType string) 
 // GetIncoming returns an iterator that streams incoming edges of a specific type to a node.
 func (g *Graph) GetIncoming(ctx context.Context, node NodeRef, edgeType string) iter.Seq2[Edge, error] {
 	return func(yield func(Edge, error) bool) {
-		var prefix string
-		if edgeType == "*" {
-			// Get all incoming edges regardless of type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/", node.Type, node.ID)
-		} else {
-			// Get edges of specific type.
-			prefix = fmt.Sprintf("graph/node/%s/%s/incoming/%s/", node.Type, node.ID, edgeType)
-		}
+		prefix := incomingEdgeRefPrefix(node, edgeType)
 
 		// Use paginator to stream edge references in batches.
 		var edgeKeys []string
@@ -346,6 +332,20 @@ func outgoingEdgeRefKey(from NodeRef, edgeType string, to NodeRef) string {
 
 func incomingEdgeRefKey(to NodeRef, edgeType string, from NodeRef) string {
 	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/%s/%s", to.Type, to.ID, edgeType, from.Type, from.ID)
+}
+
+func outgoingEdgeRefPrefix(node NodeRef, edgeType string) string {
+	if edgeType == "*" {
+		return fmt.Sprintf("graph/node/%s/%s/outgoing/", node.Type, node.ID)
+	}
+	return fmt.Sprintf("graph/node/%s/%s/outgoing/%s/", node.Type, node.ID, edgeType)
+}
+
+func incomingEdgeRefPrefix(node NodeRef, edgeType string) string {
+	if edgeType == "*" {
+		return fmt.Sprintf("graph/node/%s/%s/incoming/", node.Type, node.ID)
+	}
+	return fmt.Sprintf("graph/node/%s/%s/incoming/%s/", node.Type, node.ID, edgeType)
 }
 
 func extractEdgeTypeFromKey(key string) string {
