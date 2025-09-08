@@ -122,7 +122,7 @@
       # `nix build .#rqlite-docker-image` builds the Docker container.
       packages = forAllSystems ({ system, pkgs }: {
         default = app { name = name; pkgs = pkgs; system = system; };
-        docker-image = dockerImage { pkgs = pkgs; system = system; };
+        docker-image = dockerImage { pkgs = pkgs; system = system; name = name; };
       });
       # `nix develop` provides a shell containing required tools.
       devShells = forAllSystems ({ system, pkgs }: {
