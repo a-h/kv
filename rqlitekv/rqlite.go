@@ -16,7 +16,7 @@ func New(client *rqlitehttp.Client) *Rqlite {
 	return &Rqlite{
 		Client:          client,
 		Timeout:         time.Second * 10,
-		ReadConsistency: rqlitehttp.ReadConsistencyLevelStrong,
+		ReadConsistency: rqlitehttp.ReadConsistencyLevelLinearizable,
 		Now:             time.Now,
 	}
 }
