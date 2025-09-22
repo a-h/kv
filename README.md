@@ -370,7 +370,7 @@ func main() {
   ctx := context.Background()
   
   // Create a new SQLite database.
-  pool, err := sqlitex.NewPool("file:example.db?mode=rwc", sqlitex.PoolOptions{})
+  pool, err := sqlitex.NewPool("file:example.db?cache=shared&mode=rwc&_busy_timeout=5000&_txlock=immediate&_journal_mode=WAL", sqlitex.PoolOptions{})
   if err != nil {
     log.Fatal(err)
   }
@@ -411,7 +411,7 @@ func main() {
 
 ```go
 // SQLite Store.
-pool, err := sqlitex.NewPool("file:data.db?mode=rwc", sqlitex.PoolOptions{})
+pool, err := sqlitex.NewPool("file:data.db?cache=shared&mode=rwc&_busy_timeout=5000&_txlock=immediate&_journal_mode=WAL", sqlitex.PoolOptions{})
 if err != nil {
   return err
 }
