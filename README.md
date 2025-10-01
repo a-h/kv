@@ -706,6 +706,13 @@ nix build .#packages.aarch64-linux.docker-image
 nix build .#packages.x86_64-linux.docker-image
 ```
 
+### docker-load
+
+```bash
+docker load < ./result
+docker tag ghcr.io/a-h/kv:`version get` ghcr.io/a-h/kv:latest
+```
+
 ### crane-push
 
 env: CONTAINER_REGISTRY=ghcr.io/kv

@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     gitignore = {
       url = "github:hercules-ci/gitignore.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -30,16 +30,6 @@
           inherit system;
           overlays = [
             (final: prev: {
-              rqlite = prev.rqlite.overrideAttrs (oldAttrs: {
-                version = "8.36.4";
-                src = prev.fetchFromGitHub {
-                  owner = "rqlite";
-                  repo = "rqlite";
-                  rev = "v8.36.4";
-                  hash = "sha256-kscSjT83wLiTgY6fOuvP2KnIXDTwmgHIAvNRq4IMawg=";
-                };
-                vendorHash = "sha256-lMDE8M8O6HIJE585OaI1islvffVHncr5CwLoVVSCOh4=";
-              });
               version = version.packages.${system}.default;
               xc = xc.packages.${system}.xc;
             })
@@ -54,8 +44,10 @@
         src = gitignore.lib.gitignoreSource ./.;
         go = pkgs.go;
         subPackages = [ "cmd/kv" ];
-        vendorHash = "sha256-fMAJSfdpSlZngvZpVgj4odlyfRXmkibG09G2ECwaUa8=";
-        CGO_ENABLED = 0;
+        vendorHash = "sha256-a15Oi2WZdMOVM+u1vIVEJaIDTMFyFZ/uTT1BB5NelYE==";
+        env = {
+          CGO_ENABLED = 0;
+        };
         flags = [
           "-trimpath"
         ];
@@ -78,7 +70,7 @@
           versionNumber = builtins.readFile ./.version;
         in
         pkgs.dockerTools.buildImage {
-          name = name;
+          name = "ghcr.io/a-h/kv";
           tag = versionNumber;
 
           copyToRoot = [

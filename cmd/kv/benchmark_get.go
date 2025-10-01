@@ -19,6 +19,9 @@ func (c *BenchmarkGetCommand) Run(ctx context.Context, g GlobalFlags) error {
 	if err != nil {
 		return fmt.Errorf("failed to create store: %w", err)
 	}
+	if err = store.Init(ctx); err != nil {
+		return fmt.Errorf("failed to initialize store: %w", err)
+	}
 
 	fmt.Printf("Putting %d initial records...\n", c.X)
 
