@@ -147,12 +147,12 @@ func TestNewCleanupTaskHandler(t *testing.T) {
 	store := newTestStore(t)
 
 	var cleanupCalled bool
-	cleanupFn := func(ctx context.Context, s kv.Store, fs kv.FileSystem) (kv.CleanupResult, error) {
+	cleanupFn := func(ctx context.Context, s kv.Store) (kv.CleanupResult, error) {
 		cleanupCalled = true
 		return kv.CleanupResult{FilesDeleted: 3}, nil
 	}
 
-	handler := kv.NewCleanupTaskHandler(cleanupFn, store, nil)
+	handler := kv.NewCleanupTaskHandler(cleanupFn, store)
 
 	task := kv.NewTask("daily-cleanup", nil)
 	if err := handler(context.Background(), task); err != nil {

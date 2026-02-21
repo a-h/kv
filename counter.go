@@ -22,9 +22,23 @@ type CounterStat struct {
 // CounterKeyPrefix is the key prefix used for counter statistics in the store.
 const CounterKeyPrefix = "counter/"
 
+// counterAccessEvent records a single access to a cached item.
+type counterAccessEvent struct {
+	Delta      int64     `json:"delta"`
+	AccessedAt time.Time `json:"accessedAt"`
+}
+
+// process applies an access event to the stat (mirrors statemachine Counter.Process).
+func (s *CounterStat) process(e counterAccessEvent) {
+	s.Count += e.Delta
+	if e.AccessedAt.After(s.LastAccessed) {
+		s.LastAccessed = e.AccessedAt
+	}
+}
+
 type counterEvent struct {
-	group     string
-	name      string
+	group      string
+	name       string
 	accessedAt time.Time
 }
 
@@ -71,10 +85,10 @@ func (c *AsyncCounter) Run(ctx context.Context) error {
 			for _, b := range batch {
 				if err := c.applyDelta(ctx, b.group, b.name, b.delta, b.lastAccess); err != nil {
 					slog.WarnContext(ctx, "failed to apply counter delta",
-						"group", b.group,
-						"name", b.name,
-						"delta", b.delta,
-						"err", err,
+						slog.String("group", b.group),
+						slog.String("name", b.name),
+						slog.Int64("delta", b.delta),
+						slog.Any("err", err),
 					)
 				}
 			}
@@ -112,10 +126,12 @@ func (c *AsyncCounter) drainChannel(initial counterEvent) []counterBatchEntry {
 	}
 }
 
-// applyDelta reads the current stat for the given group/name, adds delta, and writes it back.
-// It retries on version mismatch to handle concurrent updates.
+// applyDelta loads the current stat, applies the access event, and writes it back atomically.
+// It mirrors the statemachine Processor.Process approach: load state, process event in-memory,
+// then commit with MutateAll. It retries on version mismatch.
 func (c *AsyncCounter) applyDelta(ctx context.Context, group, name string, delta int64, lastAccess time.Time) error {
 	key := fmt.Sprintf("%s%s/%s", CounterKeyPrefix, group, name)
+	event := counterAccessEvent{Delta: delta, AccessedAt: lastAccess}
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -125,21 +141,19 @@ func (c *AsyncCounter) applyDelta(ctx context.Context, group, name string, delta
 		if err != nil {
 			return err
 		}
-		stat.Count += delta
-		if lastAccess.After(stat.LastAccessed) {
-			stat.LastAccessed = lastAccess
-		}
+		// Apply the event in-memory (mirrors statemachine Counter.Process).
+		stat.process(event)
 		version := 0
 		if ok {
 			version = r.Version
 		}
-		err = c.store.Put(ctx, key, version, stat)
+		_, err = c.store.MutateAll(ctx, Put(key, version, stat))
 		if err == nil {
 			return nil
 		}
 		if !errors.Is(err, ErrVersionMismatch) {
 			return err
 		}
-		// Retry on version mismatch.
+		// Retry on version mismatch (mirrors statemachine's ErrOptimisticConcurrency handling).
 	}
 }

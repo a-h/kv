@@ -13,15 +13,15 @@ type CleanupResult struct {
 }
 
 // CleanupFunc is the signature for caller-supplied cleanup implementations.
-// It receives the store (for reading counter stats) and a filesystem (for deleting files).
-type CleanupFunc func(ctx context.Context, store Store, fs FileSystem) (CleanupResult, error)
+// It receives the store for reading counter stats and deleting cached items.
+type CleanupFunc func(ctx context.Context, store Store) (CleanupResult, error)
 
 // maxCleanupDuration is the elapsed time after which a warning is logged.
 const maxCleanupDuration = 12 * time.Hour
 
 // NewCleanupTaskHandler returns a TaskHandler that runs fn and logs metrics on completion.
 // A warning is logged if the cleanup takes longer than 12 hours.
-func NewCleanupTaskHandler(fn CleanupFunc, store Store, fs FileSystem) TaskHandler {
+func NewCleanupTaskHandler(fn CleanupFunc, store Store) TaskHandler {
 	return func(ctx context.Context, task Task) error {
 		start := time.Now()
 
@@ -31,9 +31,9 @@ func NewCleanupTaskHandler(fn CleanupFunc, store Store, fs FileSystem) TaskHandl
 			select {
 			case <-warningTimer.C:
 				slog.WarnContext(ctx, "cleanup is taking longer than expected",
-					"task", task.Name,
-					"elapsed", time.Since(start).String(),
-					"threshold", maxCleanupDuration.String(),
+					slog.String("task", task.Name),
+					slog.String("elapsed", time.Since(start).String()),
+					slog.String("threshold", maxCleanupDuration.String()),
 				)
 			case <-warningDone:
 			}
@@ -43,13 +43,13 @@ func NewCleanupTaskHandler(fn CleanupFunc, store Store, fs FileSystem) TaskHandl
 			warningTimer.Stop()
 		}()
 
-		result, err := fn(ctx, store, fs)
+		result, err := fn(ctx, store)
 		result.Duration = time.Since(start)
 
 		slog.InfoContext(ctx, "cleanup completed",
-			"task", task.Name,
-			"files_deleted", result.FilesDeleted,
-			"duration", result.Duration.String(),
+			slog.String("task", task.Name),
+			slog.Int("filesDeleted", result.FilesDeleted),
+			slog.Duration("duration", result.Duration),
 		)
 
 		return err
