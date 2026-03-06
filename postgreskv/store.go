@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 
 	"github.com/a-h/kv"
 	"github.com/jackc/pgx/v5"
@@ -148,12 +147,12 @@ func (s *Store) Put(ctx context.Context, key string, version int, value any) err
 	if err != nil {
 		return fmt.Errorf("put: create statement: %w", err)
 	}
-	rowsAffected, err := s.Mutate(ctx, []SQLStatement{stmt})
+	_, err = s.Mutate(ctx, []SQLStatement{stmt})
 	if err != nil {
+		if errors.Is(err, kv.ErrVersionMismatch) {
+			return kv.ErrVersionMismatch
+		}
 		return fmt.Errorf("put: mutate: %w", err)
-	}
-	if rowsAffected[0] == 0 {
-		return kv.ErrVersionMismatch
 	}
 	return nil
 }
@@ -163,7 +162,8 @@ func (s *Store) Patch(ctx context.Context, key string, version int, patch any) e
 	if err != nil {
 		return fmt.Errorf("patch: create statement: %w", err)
 	}
-	if _, err = s.Mutate(ctx, []SQLStatement{stmt}); err != nil {
+	_, err = s.Mutate(ctx, []SQLStatement{stmt})
+	if err != nil {
 		if errors.Is(err, kv.ErrVersionMismatch) {
 			return kv.ErrVersionMismatch
 		}
@@ -219,7 +219,7 @@ func (s *Store) CountRange(ctx context.Context, from, to string) (int, error) {
 	return s.queryScalarInt(ctx, `select count(*) from kv where key >= @from and key < @to;`, args)
 }
 
-func (s *Store) Mutate(ctx context.Context, stmts []SQLStatement) ([]int, error) {
+func (s *Store) Mutate(ctx context.Context, stmts []SQLStatement) (rowsAffected []int, err error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("mutate: begin: %w", err)
@@ -231,16 +231,18 @@ func (s *Store) Mutate(ctx context.Context, stmts []SQLStatement) ([]int, error)
 			err = tx.Commit(ctx)
 		}
 	}()
-	rowsAffected := make([]int, len(stmts))
+	rowsAffected = make([]int, len(stmts))
 	for i, stmt := range stmts {
 		tag, execErr := tx.Exec(ctx, stmt.SQL, stmt.NamedParams)
 		if execErr != nil {
-			if strings.Contains(execErr.Error(), "null value in column") {
-				return rowsAffected, kv.ErrVersionMismatch
-			}
-			return rowsAffected, fmt.Errorf("mutate: index %d: %w", i, execErr)
+			err = fmt.Errorf("mutate: index %d: %w", i, execErr)
+			return rowsAffected, err
 		}
 		rowsAffected[i] = int(tag.RowsAffected())
+		if stmt.MustAffectRows && rowsAffected[i] == 0 {
+			err = kv.ErrVersionMismatch
+			return rowsAffected, err
+		}
 	}
 	return rowsAffected, err
 }
@@ -309,9 +311,10 @@ func (s *Store) createPutMutationStatement(m kv.PutMutation) (SQLStatement, erro
 		SQL: `insert into kv (key, version, value, type, created)
 values (@key, 1, @value::jsonb, @type, @now)
 on conflict(key) do update
-set version = case when (@version = -1 or kv.version = @version) then kv.version + 1 else null end,
+set version = kv.version + 1,
     value = excluded.value,
-    type = excluded.type;`,
+    type = excluded.type
+where @version = -1 or kv.version = @version;`,
 		NamedParams: pgx.NamedArgs{
 			"key":     m.Key,
 			"version": m.Version,
@@ -319,6 +322,7 @@ set version = case when (@version = -1 or kv.version = @version) then kv.version
 			"type":    typeName,
 			"now":     s.Now(),
 		},
+		MustAffectRows: true,
 	}, nil
 }
 
@@ -332,9 +336,10 @@ func (s *Store) createPatchMutationStatement(m kv.PatchMutation) (SQLStatement, 
 		SQL: `insert into kv (key, version, value, type, created)
 values (@key, 1, @value::jsonb, @type, @now)
 on conflict(key) do update
-set version = case when (@version = -1 or kv.version = @version) then kv.version + 1 else null end,
+set version = kv.version + 1,
     value = kv.value || excluded.value,
-    type = excluded.type;`,
+    type = excluded.type
+where @version = -1 or kv.version = @version;`,
 		NamedParams: pgx.NamedArgs{
 			"key":     m.Key,
 			"version": m.Version,
@@ -342,6 +347,7 @@ set version = case when (@version = -1 or kv.version = @version) then kv.version
 			"type":    typeName,
 			"now":     s.Now(),
 		},
+		MustAffectRows: true,
 	}, nil
 }
 

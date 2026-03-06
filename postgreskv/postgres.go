@@ -3,7 +3,6 @@ package postgreskv
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,8 +19,9 @@ type Postgres struct {
 }
 
 type SQLStatement struct {
-	SQL         string
-	NamedParams pgx.NamedArgs
+	SQL            string
+	NamedParams    pgx.NamedArgs
+	MustAffectRows bool
 }
 
 func New(pool *pgxpool.Pool) *Postgres {
@@ -88,9 +88,6 @@ func (p *Postgres) Mutate(ctx context.Context, stmts []SQLStatement) ([]int, err
 	for i, stmt := range stmts {
 		tag, execErr := tx.Exec(ctx, stmt.SQL, stmt.NamedParams)
 		if execErr != nil {
-			if strings.Contains(execErr.Error(), "null value in column") {
-				return rowsAffected, kv.ErrVersionMismatch
-			}
 			return rowsAffected, fmt.Errorf("mutate: index %d: %w", i, execErr)
 		}
 		rowsAffected[i] = int(tag.RowsAffected())
