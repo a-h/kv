@@ -13,12 +13,18 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	ctx := context.Background()
 
 	// Create an in-memory SQLite database for this example.
 	pool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer pool.Close()
 
@@ -26,7 +32,7 @@ func main() {
 
 	// Initialize the database schema.
 	if err := scheduler.Init(ctx); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// Create different types of tasks.
@@ -39,10 +45,10 @@ func main() {
 		"gpu_type": "A100",
 	})
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		task := kv.NewTask("gpu-inference", gpuPayload)
 		if err := scheduler.New(ctx, task); err != nil {
-			log.Fatal(err)
+			return err
 		}
 		fmt.Printf("Created GPU task: %s\n", task.ID)
 	}
@@ -53,10 +59,10 @@ func main() {
 		"algorithm": "quicksort",
 	})
 
-	for i := 0; i < 2; i++ {
+	for range 3 {
 		task := kv.NewTask("cpu-compute", cpuPayload)
 		if err := scheduler.New(ctx, task); err != nil {
-			log.Fatal(err)
+			return err
 		}
 		fmt.Printf("Created CPU task: %s\n", task.ID)
 	}
@@ -67,11 +73,11 @@ func main() {
 		"target": "/data/processed.csv",
 	})
 
-	task := kv.NewTask("file-processing", ioPayload)
-	if err := scheduler.New(ctx, task); err != nil {
-		log.Fatal(err)
+	ioTask := kv.NewTask("file-processing", ioPayload)
+	if err := scheduler.New(ctx, ioTask); err != nil {
+		return err
 	}
-	fmt.Printf("Created I/O task: %s\n", task.ID)
+	fmt.Printf("Created I/O task: %s\n", ioTask.ID)
 
 	fmt.Println("\n--- Worker Scenarios ---")
 
@@ -91,10 +97,10 @@ func main() {
 	})
 
 	// Fetch and process GPU tasks.
-	for i := 0; i < 3; i++ {
+	for range 5 {
 		task, locked, err := scheduler.Lock(ctx, gpuRunner.RunnerID, 5*time.Minute, gpuRunner.TaskTypes()...)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if !locked {
 			fmt.Println("  No more GPU tasks available")
@@ -103,12 +109,12 @@ func main() {
 
 		// Process the task.
 		if err := gpuRunner.Handlers[task.Name](ctx, task); err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		// Mark as completed using Release.
 		if err := scheduler.Release(ctx, task.ID, gpuRunner.RunnerID, kv.TaskStatusCompleted, ""); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
@@ -136,10 +142,10 @@ func main() {
 	})
 
 	// Fetch and process CPU/I/O tasks.
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		task, locked, err := scheduler.Lock(ctx, cpuRunner.RunnerID, 5*time.Minute, cpuRunner.TaskTypes()...)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if !locked {
 			fmt.Println("  No more CPU/I/O tasks available")
@@ -148,12 +154,12 @@ func main() {
 
 		// Process the task.
 		if err := cpuRunner.Handlers[task.Name](ctx, task); err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		// Mark as completed using Release.
 		if err := scheduler.Release(ctx, task.ID, cpuRunner.RunnerID, kv.TaskStatusCompleted, ""); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
@@ -177,19 +183,19 @@ func main() {
 	})
 
 	// Try to fetch any remaining tasks.
-	task, locked, err := scheduler.Lock(ctx, generalRunner.RunnerID, 5*time.Minute)
+	remainingTask, locked, err := scheduler.Lock(ctx, generalRunner.RunnerID, 5*time.Minute)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if locked {
-		fmt.Printf("  General Worker found remaining task: %s (type: %s)\n", task.ID, task.Name)
+		fmt.Printf("  General Worker found remaining task: %s (type: %s)\n", remainingTask.ID, remainingTask.Name)
 
-		if err := generalRunner.Handlers[task.Name](ctx, task); err != nil {
-			log.Fatal(err)
+		if err := generalRunner.Handlers[remainingTask.Name](ctx, remainingTask); err != nil {
+			return err
 		}
 
-		if err := scheduler.Release(ctx, task.ID, generalRunner.RunnerID, kv.TaskStatusCompleted, ""); err != nil {
-			log.Fatal(err)
+		if err := scheduler.Release(ctx, remainingTask.ID, generalRunner.RunnerID, kv.TaskStatusCompleted, ""); err != nil {
+			return err
 		}
 	} else {
 		fmt.Println("  No remaining tasks - all processed!")
@@ -200,12 +206,12 @@ func main() {
 	// Show task completion status.
 	allTasks, err := scheduler.List(ctx, "", "", 0, 100)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	completed := 0
-	for _, task := range allTasks {
-		if task.Status == kv.TaskStatusCompleted {
+	for _, t := range allTasks {
+		if t.Status == kv.TaskStatusCompleted {
 			completed++
 		}
 	}
@@ -213,4 +219,5 @@ func main() {
 	fmt.Printf("Total tasks: %d\n", len(allTasks))
 	fmt.Printf("Completed: %d\n", completed)
 	fmt.Printf("Task filtering allows workers to focus on their specialties! 🎯\n")
+	return nil
 }

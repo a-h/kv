@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     gitignore = {
       url = "github:hercules-ci/gitignore.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -9,13 +9,9 @@
       url = "github:a-h/version";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    xc = {
-      url = "github:joerdav/xc";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, gitignore, version, xc }:
+  outputs = { self, nixpkgs, gitignore, version }:
     let
       allSystems = [
         "x86_64-linux" # 64-bit Intel/AMD Linux
@@ -31,7 +27,6 @@
           overlays = [
             (final: prev: {
               version = version.packages.${system}.default;
-              xc = xc.packages.${system}.xc;
             })
           ];
         };
@@ -104,7 +99,7 @@
         pkgs.version
         # Database tools.
         pkgs.rqlite # Distributed sqlite.
-        pkgs.pgcli # PostgreSQL CLI. Use `pgcli -h localhost -u postgres` and password `secret` as per the README.md file.
+        pkgs.postgresql # PostgreSQL. Comes with `psql -h localhost -u postgres` and password `secret` as per the README.md file.
         pkgs.natscli # NATS CLI for testing and monitoring NATS server.
       ];
 

@@ -750,6 +750,32 @@ View logs from development services.
 docker compose logs -f
 ```
 
+### nerdctl-services-run
+
+Interactive: true
+
+Start development services using Rancher Desktop (nerdctl).
+
+```bash
+nerdctl compose up
+```
+
+### nerdctl-services-stop
+
+Stop development services using Rancher Desktop (nerdctl).
+
+```bash
+nerdctl compose down
+```
+
+### nerdctl-services-logs
+
+View logs from development services using Rancher Desktop (nerdctl).
+
+```bash
+nerdctl compose logs -f
+```
+
 ### rqlite-db-shell
 
 interactive: true
@@ -764,7 +790,7 @@ Env: PGPASSWORD=secret
 interactive: true
 
 ```bash
-pgcli -h localhost -u postgres -d postgres
+psql -h localhost -u postgres -d postgres
 ```
 
 ### nats-cli
@@ -779,7 +805,7 @@ nats --server=nats://localhost:4222 server info
 
 ```bash
 sqlite3 data.db "DROP TABLE IF EXISTS kv; DROP TABLE IF EXISTS locks; DROP TABLE IF EXISTS stream; DROP TABLE IF EXISTS tasks; DROP TABLE IF EXISTS migration_version;"
-echo "DROP TABLE IF EXISTS kv, locks, stream, tasks, migration_version CASCADE;" | PGPASSWORD=secret pgcli -h localhost -u postgres -d postgres
+echo "DROP TABLE IF EXISTS kv, locks, stream, tasks, migration_version CASCADE;" | PGPASSWORD=secret psql -h localhost -u postgres -d postgres
 curl -XPOST 'http://admin:secret@localhost:4001/db/execute?pretty&timings' -H "Content-Type: application/json" -d '[
     "DROP TABLE IF EXISTS kv",
     "DROP TABLE IF EXISTS locks", 

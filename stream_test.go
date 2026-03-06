@@ -360,7 +360,7 @@ func TestStreamConsumer(t *testing.T) {
 		ctx := context.Background()
 
 		// Simulate persisted state.
-		var consumerState map[string]StreamConsumerStatus = make(map[string]StreamConsumerStatus)
+		consumerState := make(map[string]StreamConsumerStatus)
 		var consumerVersion int
 
 		store := &mockStore{

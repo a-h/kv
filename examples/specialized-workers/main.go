@@ -19,10 +19,16 @@ import (
 // specific task types, allowing for worker pools with different capabilities.
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	// Set up in-memory SQLite store for demonstration.
 	pool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer pool.Close()
 
@@ -30,7 +36,7 @@ func main() {
 
 	// Apply migrations.
 	if err := scheduler.Init(context.Background()); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -52,6 +58,7 @@ func main() {
 
 	<-ctx.Done()
 	fmt.Println("\nShutting down workers...")
+	return nil
 }
 
 func createExampleTasks(ctx context.Context, scheduler kv.Scheduler) {
