@@ -79,10 +79,11 @@ store.Put(ctx, "user/alice", -1, user1)
 store.Put(ctx, "user/bob", -1, user2)
 store.Put(ctx, "post/post1", -1, post)
 
-// Create node references.
-aliceNode := graph.NewNodeRef("alice", "User")
-bobNode := graph.NewNodeRef("bob", "User")
-postNode := graph.NewNodeRef("post1", "Post")
+// Create node references using store keys as IDs.
+// This allows direct store.Get(ctx, nodeRef.ID, &result) without transformation.
+aliceNode := graph.NewNodeRef("user/alice", "User")
+bobNode := graph.NewNodeRef("user/bob", "User")
+postNode := graph.NewNodeRef("post/post1", "Post")
 
 // Create relationships.
 followEdge := graph.NewEdge(
@@ -107,8 +108,8 @@ g.AddEdge(ctx, authorEdge)
 
 ```go
 // Create node references for queries.
-aliceNode := graph.NewNodeRef("alice", "User")
-bobNode := graph.NewNodeRef("bob", "User")
+aliceNode := graph.NewNodeRef("user/alice", "User")
+bobNode := graph.NewNodeRef("user/bob", "User")
 
 // Get specific edge.
 edge, exists, err := g.GetEdge(ctx, aliceNode, "follows", bobNode)
@@ -116,8 +117,7 @@ edge, exists, err := g.GetEdge(ctx, aliceNode, "follows", bobNode)
 // Get all users alice follows.
 for edge, err := range g.GetOutgoing(ctx, aliceNode, "follows") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     fmt.Printf("Alice follows: %s\n", edge.To.ID)
 }
@@ -125,8 +125,7 @@ for edge, err := range g.GetOutgoing(ctx, aliceNode, "follows") {
 // Get all followers of bob.
 for edge, err := range g.GetIncoming(ctx, bobNode, "follows") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     fmt.Printf("Bob is followed by: %s\n", edge.From.ID)
 }
@@ -134,8 +133,7 @@ for edge, err := range g.GetIncoming(ctx, bobNode, "follows") {
 // Get all relationships from alice (any type).
 for edge, err := range g.GetAllOutgoing(ctx, aliceNode) {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     fmt.Printf("Alice -> %s via %s\n", edge.To.ID, edge.Type)
 }
@@ -143,8 +141,7 @@ for edge, err := range g.GetAllOutgoing(ctx, aliceNode) {
 // Get all relationships to bob (any type).
 for edge, err := range g.GetAllIncoming(ctx, bobNode) {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     fmt.Printf("%s -> Bob via %s\n", edge.From.ID, edge.Type)
 }
@@ -156,7 +153,7 @@ for edge, err := range g.GetAllIncoming(ctx, bobNode) {
 
 ```go
 // Traverse the graph starting from alice, max 3 hops.
-paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
+paths, err := g.BreadthFirstSearch(ctx, "User", "user/alice", graph.TraversalOptions{
     MaxDepth:   3,
     EdgeTypes:  []string{"follows"}, // Only follow "follows" edges.
     VisitLimit: 100,                 // Maximum of 100 nodes.
@@ -172,7 +169,7 @@ for _, path := range paths {
 
 ```go
 // Find shortest path from alice to charlie.
-path, err := g.FindShortestPath(ctx, "User", "alice", "User", "charlie", 
+path, err := g.FindShortestPath(ctx, "User", "user/alice", "User", "user/charlie",
     graph.TraversalOptions{
         EdgeTypes: []string{"follows"},
     })
@@ -189,7 +186,7 @@ if path != nil {
 
 ```go
 // Find mutual follows between alice and bob.
-mutual, err := g.FindMutualConnections(ctx, "User", "alice", "User", "bob", "follows")
+mutual, err := g.FindMutualConnections(ctx, "User", "user/alice", "User", "user/bob", "follows")
 
 for _, connection := range mutual {
     fmt.Printf("Both alice and bob follow: %s\n", connection.ID)
@@ -200,11 +197,11 @@ for _, connection := range mutual {
 
 ```go
 // Get node degree (number of connections).
-inDegree, outDegree, err := g.GetDegree(ctx, "User", "alice", "follows")
+inDegree, outDegree, err := g.GetDegree(ctx, "User", "user/alice", "follows")
 fmt.Printf("Alice follows %d users and is followed by %d users\n", outDegree, inDegree)
 
 // Get all neighbors (both directions).
-neighbors, err := g.GetNeighbors(ctx, "User", "alice", graph.TraversalOptions{
+neighbors, err := g.GetNeighbors(ctx, "User", "user/alice", graph.TraversalOptions{
     EdgeTypes: []string{"follows", "likes"},
 })
 ```
@@ -231,7 +228,7 @@ scoreFilter := func(edge graph.Edge) bool {
     return false
 }
 
-paths, err := g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
+paths, err := g.BreadthFirstSearch(ctx, "User", "user/alice", graph.TraversalOptions{
     EdgeTypes: []string{"likes"},
     Filter:    scoreFilter,
 })
@@ -251,7 +248,7 @@ combinedFilter := func(edge graph.Edge) bool {
     return hasCategory && category == "tech" && hasScore && score > 5
 }
 
-paths, err = g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
+paths, err = g.BreadthFirstSearch(ctx, "User", "user/alice", graph.TraversalOptions{
     EdgeTypes: []string{"likes"},
     Filter:    combinedFilter,
 })
@@ -262,7 +259,7 @@ paths, err = g.BreadthFirstSearch(ctx, "User", "alice", graph.TraversalOptions{
 Traverse multiple edge types in a single query:
 
 ```go
-neighbors, err := g.GetNeighbors(ctx, "User", "alice", graph.TraversalOptions{
+neighbors, err := g.GetNeighbors(ctx, "User", "user/alice", graph.TraversalOptions{
     EdgeTypes: []string{"follows", "likes", "mentions"},
 })
 ```
@@ -272,13 +269,13 @@ neighbors, err := g.GetNeighbors(ctx, "User", "alice", graph.TraversalOptions{
 The graph package uses consistent key patterns for efficient storage and retrieval:
 
 ```text
-# Edge storage
+# Edge storage.
 graph/edge/{fromType}/{fromID}/{edgeType}/{toType}/{toID}
 
-# Outgoing edge indexes (for fast lookups)
+# Outgoing edge indexes (for fast lookups).
 graph/node/{entityType}/{entityID}/outgoing/{edgeType}
 
-# Incoming edge indexes (for reverse lookups)  
+# Incoming edge indexes (for reverse lookups).
 graph/node/{entityType}/{entityID}/incoming/{edgeType}
 ```
 
@@ -288,18 +285,16 @@ graph/node/{entityType}/{entityID}/incoming/{edgeType}
 
 ```go
 // User follows another user.
-aliceNode := graph.NewNodeRef("alice", "User")
-bobNode := graph.NewNodeRef("bob", "User")
+aliceNode := graph.NewNodeRef("user/alice", "User")
+bobNode := graph.NewNodeRef("user/bob", "User")
 
-followEdge := graph.NewEdge(aliceNode, bobNode, "follows", nil)
-g.AddEdge(ctx, followEdge)
+g.AddEdge(ctx, graph.NewEdge(aliceNode, bobNode, "follows", nil))
 
 // Find followers, following, mutual connections.
 var followers []graph.Edge
 for edge, err := range g.GetIncoming(ctx, aliceNode, "follows") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     followers = append(followers, edge)
 }
@@ -307,56 +302,51 @@ for edge, err := range g.GetIncoming(ctx, aliceNode, "follows") {
 var following []graph.Edge
 for edge, err := range g.GetOutgoing(ctx, aliceNode, "follows") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     following = append(following, edge)
 }
 
-mutual, _ := g.FindMutualConnections(ctx, "User", "alice", "User", "bob", "follows")
+mutual, _ := g.FindMutualConnections(ctx, "User", "user/alice", "User", "user/bob", "follows")
 ```
 
 ### Content Management
 
 ```go
-// User authored a post
-aliceNode := graph.NewNodeRef("alice", "User")
-postNode := graph.NewNodeRef("post1", "Post")
+// User authored a post.
+aliceNode := graph.NewNodeRef("user/alice", "User")
+postNode := graph.NewNodeRef("post/post1", "Post")
 
-authorEdge := graph.NewEdge(
+g.AddEdge(ctx, graph.NewEdge(
     aliceNode,
     postNode,
     "authored",
     json.RawMessage(`{"timestamp": "2024-01-01T10:00:00Z"}`),
-)
-g.AddEdge(ctx, authorEdge)
+))
 
-// User commented on a post
-bobNode := graph.NewNodeRef("bob", "User")
-commentEdge := graph.NewEdge(
+// User commented on a post.
+bobNode := graph.NewNodeRef("user/bob", "User")
+g.AddEdge(ctx, graph.NewEdge(
     bobNode,
     postNode,
     "commented",
     json.RawMessage(`{"comment_id": "comment123"}`),
-)
-g.AddEdge(ctx, commentEdge)
+))
 
-// Find all posts by a user
+// Find all posts by a user.
 var posts []graph.Edge
 for edge, err := range g.GetOutgoing(ctx, aliceNode, "authored") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     posts = append(posts, edge)
 }
 
-// Find all comments on a post
+// Find all comments on a post.
 var comments []graph.Edge
 for edge, err := range g.GetIncoming(ctx, postNode, "commented") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     comments = append(comments, edge)
 }
@@ -365,46 +355,36 @@ for edge, err := range g.GetIncoming(ctx, postNode, "commented") {
 ### Product Recommendations
 
 ```go
-// User viewed/bought products
-aliceNode := graph.NewNodeRef("alice", "User")
-laptopNode := graph.NewNodeRef("laptop", "Product")
+// User viewed/bought products.
+aliceNode := graph.NewNodeRef("user/alice", "User")
+laptopNode := graph.NewNodeRef("product/laptop", "Product")
 
-buyEdge := graph.NewEdge(
+g.AddEdge(ctx, graph.NewEdge(
     aliceNode,
     laptopNode,
     "bought",
     json.RawMessage(`{"price": 1200.0, "date": "2024-01-01"}`),
-)
-g.AddEdge(ctx, buyEdge)
+))
 
-// Products belong to categories
-electronicsNode := graph.NewNodeRef("electronics", "Category")
-categoryEdge := graph.NewEdge(
-    laptopNode,
-    electronicsNode,
-    "in_category",
-    nil,
-)
-g.AddEdge(ctx, categoryEdge)
+// Products belong to categories.
+electronicsNode := graph.NewNodeRef("category/electronics", "Category")
+g.AddEdge(ctx, graph.NewEdge(laptopNode, electronicsNode, "in_category", nil))
 
-// Find similar users (who bought same products)
+// Find similar users (who bought same products).
 var alicePurchases []graph.Edge
 for edge, err := range g.GetOutgoing(ctx, aliceNode, "bought") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     alicePurchases = append(alicePurchases, edge)
 }
 
 for _, purchase := range alicePurchases {
-    productNode := graph.NewNodeRef(purchase.To.ID, "Product")
-    for edge, err := range g.GetIncoming(ctx, productNode, "bought") {
+    for edge, err := range g.GetIncoming(ctx, purchase.To, "bought") {
         if err != nil {
-            // handle error
-            continue
+            return err
         }
-        // edge.From contains other buyers of the same product
+        // edge.From contains other buyers of the same product.
         fmt.Printf("Similar user: %s\n", edge.From.ID)
     }
 }
@@ -415,37 +395,39 @@ for _, purchase := range alicePurchases {
 Combine with the existing ECS pattern to add relationships between entities:
 
 ```go
-// Traditional ECS: entity has components
-store.Put(ctx, "entity/player1/position", -1, Position{X: 10, Y: 20})
-store.Put(ctx, "entity/player1/health", -1, Health{Current: 100, Max: 100})
+// Store entities with components under their key prefix.
+store.Put(ctx, "player/player1", -1, Player{ID: "player1", Name: "Alice"})
+store.Put(ctx, "player/player1/position", -1, Position{X: 10, Y: 20})
+store.Put(ctx, "player/player1/health", -1, Health{Current: 100, Max: 100})
 
-// Graph: entities have relationships
-player1Node := graph.NewNodeRef("player1", "Entity")
-weapon1Node := graph.NewNodeRef("weapon1", "Entity")
-team1Node := graph.NewNodeRef("team1", "Entity")
+// NodeRef IDs use store keys for direct retrieval.
+player1 := graph.NewNodeRef("player/player1", "Player")
+weapon1 := graph.NewNodeRef("weapon/sword1", "Weapon")
+team1 := graph.NewNodeRef("team/team1", "Team")
 
-equipEdge := graph.NewEdge(player1Node, weapon1Node, "equipped", nil)
-g.AddEdge(ctx, equipEdge)
+g.AddEdge(ctx, graph.NewEdge(player1, weapon1, "equipped", nil))
+g.AddEdge(ctx, graph.NewEdge(player1, team1, "member_of", nil))
 
-memberEdge := graph.NewEdge(player1Node, team1Node, "member_of", nil)
-g.AddEdge(ctx, memberEdge)
-
-// Query: find all team members
+// Find all team members.
 var teamMembers []graph.Edge
-for edge, err := range g.GetIncoming(ctx, team1Node, "member_of") {
+for edge, err := range g.GetIncoming(ctx, team1, "member_of") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     teamMembers = append(teamMembers, edge)
 }
 
-// Query: find what player has equipped
+// Retrieve each team member using their store key.
+for _, edge := range teamMembers {
+    var player Player
+    store.Get(ctx, edge.From.ID, &player)
+}
+
+// Find what player has equipped.
 var equipment []graph.Edge
-for edge, err := range g.GetOutgoing(ctx, player1Node, "equipped") {
+for edge, err := range g.GetOutgoing(ctx, player1, "equipped") {
     if err != nil {
-        // handle error
-        break
+        return err
     }
     equipment = append(equipment, edge)
 }
@@ -453,37 +435,36 @@ for edge, err := range g.GetOutgoing(ctx, player1Node, "equipped") {
 
 ## Performance Considerations
 
-1. **Indexing**: The package maintains separate indexes for incoming and outgoing edges for O(1) lookups
-2. **Batch Operations**: Use `MutateAll` for atomic multi-edge operations
-3. **Data Filtering**: Edge data is stored as JSON, so complex data queries may be slower
-4. **Traversal Limits**: Always set reasonable limits on depth and visit count for large graphs
-5. **Memory Usage**: BFS loads paths into memory, so limit `VisitLimit` for large graphs
+1. **Indexing**: The package maintains separate indexes for incoming and outgoing edges for O(1) lookups.
+2. **Batch Operations**: Use `MutateAll` for atomic multi-edge operations.
+3. **Data Filtering**: Edge data is stored as JSON, so complex data queries may be slower.
+4. **Traversal Limits**: Always set reasonable limits on depth and visit count for large graphs.
+5. **Memory Usage**: BFS loads paths into memory, so limit `VisitLimit` for large graphs.
 
 ## Integration with Existing Features
 
 The graph package integrates seamlessly with other KV store features:
 
-- **Streaming**: Edge operations appear in the change stream
-- **Tasks**: Schedule graph maintenance tasks
-- **Locks**: Use distributed locks for graph-wide operations
-- **State Machines**: Model state transitions as graph edges
-- **ECS**: Add relationships between entities and components
+- **Streaming**: Edge operations appear in the change stream.
+- **Tasks**: Schedule graph maintenance tasks.
+- **Locks**: Use distributed locks for graph-wide operations.
+- **State Machines**: Model state transitions as graph edges.
+- **ECS**: Add relationships between entities and components.
 
 ## Migration from Other Graph Databases
 
 The key patterns make it easy to migrate from other graph databases:
 
 ```go
-// From Neo4j: CREATE (a:User)-[:FOLLOWS]->(b:User)
-aNode := graph.NewNodeRef("a", "User")
-bNode := graph.NewNodeRef("b", "User")
-followEdge := graph.NewEdge(aNode, bNode, "follows", nil)
-g.AddEdge(ctx, followEdge)
+// From Neo4j: CREATE (a:User)-[:FOLLOWS]->(b:User).
+aNode := graph.NewNodeRef("user/a", "User")
+bNode := graph.NewNodeRef("user/b", "User")
+g.AddEdge(ctx, graph.NewEdge(aNode, bNode, "follows", nil))
 
-// From AWS Neptune/Property Graph
-personNode := graph.NewNodeRef("person1", "Person")
-companyNode := graph.NewNodeRef("company1", "Company")
-workEdge := graph.NewEdge(
+// From AWS Neptune/Property Graph.
+personNode := graph.NewNodeRef("person/person1", "Person")
+companyNode := graph.NewNodeRef("company/company1", "Company")
+g.AddEdge(ctx, graph.NewEdge(
     personNode,
     companyNode,
     "works_at",
@@ -491,6 +472,5 @@ workEdge := graph.NewEdge(
         "start_date": "2020-01-01",
         "position": "Engineer"
     }`),
-)
-g.AddEdge(ctx, workEdge)
+))
 ```
