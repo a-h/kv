@@ -92,16 +92,16 @@ func run() error {
 		return fmt.Errorf("failed to store guild %s: %w", guild.ID, err)
 	}
 
-	// ECS: Add components to entities.
+	// ECS: Add components to entities using "storeKey/component" pattern.
 	components := map[string]any{
-		"entity/player1/position": Position{X: 10, Y: 20},
-		"entity/player1/health":   Health{Current: 100, Max: 100},
-		"entity/player1/weapon":   Weapon{Name: "Sword", Damage: 15},
-		"entity/player2/position": Position{X: 15, Y: 25},
-		"entity/player2/health":   Health{Current: 80, Max: 100},
-		"entity/player2/weapon":   Weapon{Name: "Bow", Damage: 12},
-		"entity/player3/position": Position{X: 5, Y: 30},
-		"entity/player3/health":   Health{Current: 90, Max: 100},
+		"player/player1/position": Position{X: 10, Y: 20},
+		"player/player1/health":   Health{Current: 100, Max: 100},
+		"player/player1/weapon":   Weapon{Name: "Sword", Damage: 15},
+		"player/player2/position": Position{X: 15, Y: 25},
+		"player/player2/health":   Health{Current: 80, Max: 100},
+		"player/player2/weapon":   Weapon{Name: "Bow", Damage: 12},
+		"player/player3/position": Position{X: 5, Y: 30},
+		"player/player3/health":   Health{Current: 90, Max: 100},
 	}
 
 	for key, component := range components {
@@ -111,53 +111,26 @@ func run() error {
 	}
 
 	// Graph: Add relationships between entities.
+	// NodeRef IDs use the store key directly, so traversing the graph
+	// gives you keys you can use immediately with store.Get().
+	player1 := graph.NewNodeRef("player/"+players[0].ID, "Player")
+	player2 := graph.NewNodeRef("player/"+players[1].ID, "Player")
+	player3 := graph.NewNodeRef("player/"+players[2].ID, "Player")
+	team1 := graph.NewNodeRef("team/"+team.ID, "Team")
+	guild1 := graph.NewNodeRef("guild/"+guild.ID, "Guild")
+
 	relationships := []graph.Edge{
 		// Team memberships.
-		graph.NewEdge(
-			graph.NewNodeRef("player1", "Player"),
-			graph.NewNodeRef("team1", "Team"),
-			"member_of",
-			nil,
-		),
-		graph.NewEdge(
-			graph.NewNodeRef("player2", "Player"),
-			graph.NewNodeRef("team1", "Team"),
-			"member_of",
-			nil,
-		),
+		graph.NewEdge(player1, team1, "member_of", nil),
+		graph.NewEdge(player2, team1, "member_of", nil),
 		// Guild memberships.
-		graph.NewEdge(
-			graph.NewNodeRef("player1", "Player"),
-			graph.NewNodeRef("guild1", "Guild"),
-			"member_of",
-			nil,
-		),
-		graph.NewEdge(
-			graph.NewNodeRef("player3", "Player"),
-			graph.NewNodeRef("guild1", "Guild"),
-			"member_of",
-			nil,
-		),
-		// Friendships.
-		graph.NewEdge(
-			graph.NewNodeRef("player1", "Player"),
-			graph.NewNodeRef("player2", "Player"),
-			"friends_with",
-			json.RawMessage(`{"since": "2024-01-01"}`),
-		),
-		graph.NewEdge(
-			graph.NewNodeRef("player2", "Player"),
-			graph.NewNodeRef("player1", "Player"),
-			"friends_with",
-			json.RawMessage(`{"since": "2024-01-01"}`),
-		),
+		graph.NewEdge(player1, guild1, "member_of", nil),
+		graph.NewEdge(player3, guild1, "member_of", nil),
+		// Friendships (bidirectional).
+		graph.NewEdge(player1, player2, "friends_with", json.RawMessage(`{"since": "2024-01-01"}`)),
+		graph.NewEdge(player2, player1, "friends_with", json.RawMessage(`{"since": "2024-01-01"}`)),
 		// Rivalries.
-		graph.NewEdge(
-			graph.NewNodeRef("player1", "Player"),
-			graph.NewNodeRef("player3", "Player"),
-			"rival_of",
-			json.RawMessage(`{"intensity": 7}`),
-		),
+		graph.NewEdge(player1, player3, "rival_of", json.RawMessage(`{"intensity": 7}`)),
 	}
 
 	for _, rel := range relationships {
@@ -172,7 +145,7 @@ func run() error {
 	// 1. Get all team members and their components.
 	fmt.Println("\n1. Team Red Team members and their stats:")
 	var teamMembers []graph.Edge
-	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("team1", "Team"), "member_of") {
+	for edge, err := range g.GetIncoming(ctx, team1, "member_of") {
 		if err != nil {
 			return fmt.Errorf("failed to get team members: %w", err)
 		}
@@ -180,13 +153,14 @@ func run() error {
 	}
 
 	for _, member := range teamMembers {
-		playerID := member.From.ID
-		fmt.Printf("  Player: %s\n", playerID)
+		// member.From.ID is the store key (e.g., "player/player1").
+		playerKey := member.From.ID
+		fmt.Printf("  Player: %s\n", playerKey)
 
-		// Get player's components.
-		playerComponents, err := store.GetPrefix(ctx, "entity/"+playerID+"/", 0, -1)
+		// Get player's components using the store key as prefix.
+		playerComponents, err := store.GetPrefix(ctx, playerKey+"/", 0, -1)
 		if err != nil {
-			return fmt.Errorf("failed to get player components for %s: %w", playerID, err)
+			return fmt.Errorf("failed to get player components for %s: %w", playerKey, err)
 		}
 
 		for _, component := range playerComponents {
@@ -213,7 +187,7 @@ func run() error {
 	// 2. Find players who are friends and check if they're close in position.
 	fmt.Println("\n2. Friend proximity analysis:")
 	var friendships []graph.Edge
-	for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef("player1", "Player"), "friends_with") {
+	for edge, err := range g.GetOutgoing(ctx, player1, "friends_with") {
 		if err != nil {
 			return fmt.Errorf("failed to get friendships: %w", err)
 		}
@@ -221,13 +195,13 @@ func run() error {
 	}
 
 	for _, friendship := range friendships {
-		friendID := friendship.To.ID
-		fmt.Printf("  %s is friends with %s\n", "player1", friendID)
+		friendKey := friendship.To.ID
+		fmt.Printf("  %s is friends with %s\n", player1.ID, friendKey)
 
-		// Get both players' positions.
+		// Get both players' positions using their store keys.
 		var pos1, pos2 Position
-		_, ok1, err1 := store.Get(ctx, "entity/player1/position", &pos1)
-		_, ok2, err2 := store.Get(ctx, "entity/"+friendID+"/position", &pos2)
+		_, ok1, err1 := store.Get(ctx, player1.ID+"/position", &pos1)
+		_, ok2, err2 := store.Get(ctx, friendKey+"/position", &pos2)
 
 		if err1 == nil && err2 == nil && ok1 && ok2 {
 			distance := abs(pos1.X-pos2.X) + abs(pos1.Y-pos2.Y) // Manhattan distance
@@ -241,7 +215,7 @@ func run() error {
 	// 3. Find guild members who might form alliances (not rivals).
 	fmt.Println("\n3. Potential guild alliances:")
 	var guildMembers []graph.Edge
-	for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef("guild1", "Guild"), "member_of") {
+	for edge, err := range g.GetIncoming(ctx, guild1, "member_of") {
 		if err != nil {
 			return fmt.Errorf("failed to get guild members: %w", err)
 		}
@@ -254,82 +228,76 @@ func run() error {
 				continue // Avoid duplicates and self-comparison
 			}
 
-			player1ID := member1.From.ID
-			player2ID := member2.From.ID
+			// From.ID is the store key, From is the full NodeRef.
+			p1 := member1.From
+			p2 := member2.From
+
+			fmt.Printf("  Checking %s and %s...\n", p1.ID, p2.ID)
 
 			// Check if they're rivals.
-			player1Node := graph.NewNodeRef(player1ID, "Player")
-			player2Node := graph.NewNodeRef(player2ID, "Player")
-			_, isRival, err := g.GetEdge(ctx, player1Node, "rival_of", player2Node)
+			_, isRival, err := g.GetEdge(ctx, p1, "rival_of", p2)
 			if err != nil {
 				continue
 			}
 
-			if !isRival {
-				// Check reverse direction too.
-				_, isRivalReverse, err := g.GetEdge(ctx, player2Node, "rival_of", player1Node)
-				if err != nil {
-					continue
-				}
-
-				if !isRivalReverse {
-					fmt.Printf("  %s and %s could form an alliance (no rivalry detected)\n", player1ID, player2ID)
-				}
+			if isRival {
+				fmt.Printf("    Cannot form alliance - rivalry exists\n")
+				continue
 			}
+
+			// Check reverse direction too.
+			_, isRivalReverse, err := g.GetEdge(ctx, p2, "rival_of", p1)
+			if err != nil {
+				continue
+			}
+
+			if isRivalReverse {
+				fmt.Printf("    Cannot form alliance - rivalry exists\n")
+				continue
+			}
+
+			fmt.Printf("    Alliance possible!\n")
 		}
 	}
 
 	// 4. Combat effectiveness calculation using both ECS and relationships.
 	fmt.Println("\n4. Combat effectiveness (Health + Weapon + Team bonus):")
 	for _, player := range players {
-		playerID := player.ID
+		playerKey := "player/" + player.ID
 
 		var health Health
 		var weapon Weapon
 		var effectiveness int
 
 		// Get health component.
-		if _, ok, err := store.Get(ctx, "entity/"+playerID+"/health", &health); err == nil && ok {
+		if _, ok, err := store.Get(ctx, playerKey+"/health", &health); err == nil && ok {
 			effectiveness += health.Current
 		}
 
 		// Get weapon component.
-		if _, ok, err := store.Get(ctx, "entity/"+playerID+"/weapon", &weapon); err == nil && ok {
+		if _, ok, err := store.Get(ctx, playerKey+"/weapon", &weapon); err == nil && ok {
 			effectiveness += weapon.Damage * 2 // Weapon damage counts double
 		}
 
 		// Team bonus - get team members and add team size bonus.
-		var playerTeams []graph.Edge
-		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef(playerID, "Player"), "member_of") {
-			if err == nil {
-				playerTeams = append(playerTeams, edge)
+		var teamBonus int
+		for edge, err := range g.GetOutgoing(ctx, graph.NewNodeRef(playerKey, "Player"), "member_of") {
+			if err != nil || edge.To.Type != "Team" {
+				continue
 			}
-		}
-		if len(playerTeams) > 0 {
-			for _, teamEdge := range playerTeams {
-				if teamEdge.To.Type == "Team" {
-					// Count team members.
-					var teamMembers []graph.Edge
-					for edge, err := range g.GetIncoming(ctx, graph.NewNodeRef(teamEdge.To.ID, "Team"), "member_of") {
-						if err == nil {
-							teamMembers = append(teamMembers, edge)
-						}
-					}
-					if len(teamMembers) > 0 {
-						teamBonus := len(teamMembers) * 5 // 5 points per team member
-						effectiveness += teamBonus
-						fmt.Printf("  %s: Base: %d, Team bonus: %d, Total: %d\n",
-							player.Name, effectiveness-teamBonus, teamBonus, effectiveness)
-						break
-					}
+			// Count team members.
+			var memberCount int
+			for _, err := range g.GetIncoming(ctx, edge.To, "member_of") {
+				if err == nil {
+					memberCount++
 				}
 			}
+			teamBonus = memberCount * 5 // 5 points per team member
+			break
 		}
-
-		if len(playerTeams) == 0 {
-			fmt.Printf("  %s: Base: %d, Team bonus: 0, Total: %d (no team)\n",
-				player.Name, effectiveness, effectiveness)
-		}
+		effectiveness += teamBonus
+		fmt.Printf("  %s: Base: %d, Team bonus: %d, Total: %d\n",
+			player.Name, effectiveness-teamBonus, teamBonus, effectiveness)
 	}
 
 	fmt.Println("\n=== Example Complete ===")

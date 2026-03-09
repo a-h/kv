@@ -28,7 +28,7 @@ func TypeOf(value any) string {
 	t := reflect.TypeOf(value)
 
 	// Handle pointers by getting the element type.
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
