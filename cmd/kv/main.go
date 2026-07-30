@@ -24,7 +24,7 @@ type GlobalFlags struct {
 func (g GlobalFlags) Store() (kv.Store, error) {
 	switch g.Type {
 	case "sqlite":
-		pool, err := sqlitex.NewPool(g.Connection, sqlitex.PoolOptions{})
+		pool, err := sqlitekv.NewPool(g.Connection, sqlitex.PoolOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -38,7 +38,10 @@ func (g GlobalFlags) Store() (kv.Store, error) {
 		password := u.Query().Get("password")
 		// Remove user and password from the connection string.
 		u.RawQuery = ""
-		client := rqlitehttp.NewClient(u.String(), nil)
+		client, err := rqlitehttp.NewClient(u.String(), nil)
+		if err != nil {
+			return nil, err
+		}
 		if user != "" && password != "" {
 			client.SetBasicAuth(user, password)
 		}
@@ -57,7 +60,7 @@ func (g GlobalFlags) Store() (kv.Store, error) {
 func (g GlobalFlags) Scheduler() (kv.Scheduler, error) {
 	switch g.Type {
 	case "sqlite":
-		pool, err := sqlitex.NewPool(g.Connection, sqlitex.PoolOptions{})
+		pool, err := sqlitekv.NewPool(g.Connection, sqlitex.PoolOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +74,10 @@ func (g GlobalFlags) Scheduler() (kv.Scheduler, error) {
 		password := u.Query().Get("password")
 		// Remove user and password from the connection string.
 		u.RawQuery = ""
-		client := rqlitehttp.NewClient(u.String(), nil)
+		client, err := rqlitehttp.NewClient(u.String(), nil)
+		if err != nil {
+			return nil, err
+		}
 		if user != "" && password != "" {
 			client.SetBasicAuth(user, password)
 		}

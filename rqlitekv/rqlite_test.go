@@ -12,7 +12,10 @@ func TestRqlite(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 
-	client := rqlitehttp.NewClient("http://localhost:4001", nil)
+	client, err := rqlitehttp.NewClient("http://localhost:4001", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Username and password configured in auth.json.
 	client.SetBasicAuth("admin", "secret")
 

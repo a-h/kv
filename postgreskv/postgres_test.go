@@ -10,6 +10,9 @@ import (
 )
 
 func TestPostgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, "postgres://postgres:secret@localhost:5432/postgres?sslmode=disable")
 	if err != nil {

@@ -14,8 +14,97 @@ import (
 	"zombiezen.com/go/sqlite/sqlitex"
 )
 
+func newDiskPool(b *testing.B) (*sqlitex.Pool, func()) {
+	b.Helper()
+	tmpDir, err := os.MkdirTemp("", "sqlite_bench")
+	if err != nil {
+		b.Fatal(err)
+	}
+	pool, err := NewPool(filepath.Join(tmpDir, "bench.db"), sqlitex.PoolOptions{})
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		b.Fatal(err)
+	}
+	return pool, func() {
+		pool.Close()
+		os.RemoveAll(tmpDir)
+	}
+}
+
+func BenchmarkPut(b *testing.B) {
+	pool, cleanup := newDiskPool(b)
+	defer cleanup()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := range b.N {
+		key := fmt.Sprintf("bench-key-%d", i)
+		value := map[string]any{"index": i, "data": "some benchmark data"}
+		if err := store.Put(ctx, key, -1, value); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkPutConcurrent(b *testing.B) {
+	pool, cleanup := newDiskPool(b)
+	defer cleanup()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		var i int
+		for pb.Next() {
+			keyBytes := make([]byte, 16)
+			if _, err := rand.Read(keyBytes); err != nil {
+				b.Fatal(err)
+			}
+			key := fmt.Sprintf("bench-key-%x-%d", keyBytes, i)
+			value := map[string]any{"index": i, "data": "some benchmark data"}
+			if err := store.Put(ctx, key, -1, value); err != nil {
+				b.Fatal(err)
+			}
+			i++
+		}
+	})
+}
+
+func BenchmarkMixed(b *testing.B) {
+	pool, cleanup := newDiskPool(b)
+	defer cleanup()
+
+	store := NewStore(pool)
+	ctx := context.Background()
+	if err := store.Init(ctx); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := range b.N {
+		key := fmt.Sprintf("bench-key-%d", i)
+		value := map[string]any{"index": i, "data": "some benchmark data"}
+		if err := store.Put(ctx, key, -1, value); err != nil {
+			b.Fatal(err)
+		}
+		var retrieved map[string]any
+		if _, _, err := store.Get(ctx, key, &retrieved); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestSqlite(t *testing.T) {
-	pool, err := sqlitex.NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{})
+	pool, err := NewPool("file::memory:?mode=memory&cache=shared", sqlitex.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +126,7 @@ func TestSqliteConcurrentDiskOperations(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	pool, err := sqlitex.NewPool(filepath.Join(tmpDir, "test.db"), sqlitex.PoolOptions{})
+	pool, err := NewPool(filepath.Join(tmpDir, "test.db"), sqlitex.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

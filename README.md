@@ -662,8 +662,6 @@ go test -coverprofile=coverage.out ./...
 
 ### lint
 
-interactive: true
-
 ```bash
 golangci-lint run
 ```
@@ -726,8 +724,6 @@ crane push /tmp/kv.tar ${CONTAINER_REGISTRY}/kv:v0.0.1
 
 ### docker-services-run
 
-Interactive: true
-
 Start development services (RQLite, PostgreSQL, NATS with JetStream).
 
 ```bash
@@ -751,8 +747,6 @@ docker compose logs -f
 ```
 
 ### nerdctl-services-run
-
-Interactive: true
 
 Start development services using Rancher Desktop (nerdctl).
 
@@ -778,8 +772,6 @@ nerdctl compose logs -f
 
 ### rqlite-db-shell
 
-interactive: true
-
 ```bash
 rqlite --user='admin:secret'
 ```
@@ -787,7 +779,6 @@ rqlite --user='admin:secret'
 ### postgres-db-shell
 
 Env: PGPASSWORD=secret
-interactive: true
 
 ```bash
 psql -h localhost -u postgres -d postgres

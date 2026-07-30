@@ -38,7 +38,7 @@ values (:id, :name, :payload, :status, :created, :scheduled_for, :retry_count, :
 			"timeout_seconds": task.TimeoutSeconds,
 		},
 	}
-	_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+	_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		return fmt.Errorf("task create: %w", err)
 	}
@@ -57,24 +57,24 @@ func (rq *Rqlite) Get(ctx context.Context, id string) (task kv.Task, ok bool, er
 		Timeout: rq.Timeout,
 		Level:   rq.ReadConsistency,
 	}
-	qr, err := rq.Client.Query(ctx, rqlitehttp.SQLStatements{stmt}, opts)
+	qr, err := rq.Client.Query(ctx, rqlitehttp.SQLStatements{&stmt}, opts)
 	if err != nil {
 		return task, false, fmt.Errorf("task get: %w", err)
 	}
 
-	if len(qr.Results) == 0 || len(qr.Results[0].Values) == 0 {
+	if hasErr, idx, msg := qr.HasError(); hasErr {
+		return task, false, fmt.Errorf("task get: index %d: %s", idx, msg)
+	}
+	getResults := qr.GetQueryResults()
+	if len(getResults) == 0 || len(getResults[0].Values) == 0 {
 		return task, false, nil
 	}
 
-	if qr.Results[0].Error != "" {
-		return task, false, fmt.Errorf("task get: %s", qr.Results[0].Error)
-	}
-
-	if len(qr.Results[0].Values) != 1 {
+	if len(getResults[0].Values) != 1 {
 		return task, false, fmt.Errorf("task get: multiple rows found for id %q", id)
 	}
 
-	task, err = rq.parseTaskFromValues(qr.Results[0].Values[0])
+	task, err = rq.parseTaskFromValues(getResults[0].Values[0])
 	if err != nil {
 		return task, false, fmt.Errorf("task get: %w", err)
 	}
@@ -94,17 +94,21 @@ func (rq *Rqlite) List(ctx context.Context, status kv.TaskStatus, name string, o
 		Timeout: rq.Timeout,
 		Level:   rq.ReadConsistency,
 	}
-	qr, err := rq.Client.Query(ctx, rqlitehttp.SQLStatements{stmt}, opts)
+	qr, err := rq.Client.Query(ctx, rqlitehttp.SQLStatements{&stmt}, opts)
 	if err != nil {
 		return nil, fmt.Errorf("task list: %w", err)
 	}
 
-	if qr.Results[0].Error != "" {
-		return nil, fmt.Errorf("task list: %s", qr.Results[0].Error)
+	if hasErr, idx, msg := qr.HasError(); hasErr {
+		return nil, fmt.Errorf("task list: index %d: %s", idx, msg)
+	}
+	listResults := qr.GetQueryResults()
+	if len(listResults) == 0 {
+		return []kv.Task{}, nil
 	}
 
-	tasks := make([]kv.Task, len(qr.Results[0].Values))
-	for i, values := range qr.Results[0].Values {
+	tasks := make([]kv.Task, len(listResults[0].Values))
+	for i, values := range listResults[0].Values {
 		task, err := rq.parseTaskFromValues(values)
 		if err != nil {
 			return nil, fmt.Errorf("task list: row %d: %w", i, err)
@@ -213,17 +217,17 @@ func (rq *Rqlite) Lock(ctx context.Context, runnerID string, lockDuration time.D
 		return task, false, fmt.Errorf("task get next pending: find: %w", err)
 	}
 
-	if len(qr.Results) == 0 || len(qr.Results[0].Values) == 0 {
+	if hasErr, idx, msg := qr.HasError(); hasErr {
+		return task, false, fmt.Errorf("task get next pending: find: index %d: %s", idx, msg)
+	}
+	findResults := qr.GetQueryResults()
+	if len(findResults) == 0 || len(findResults[0].Values) == 0 {
 		return task, false, nil // No pending tasks.
 	}
 
-	if qr.Results[0].Error != "" {
-		return task, false, fmt.Errorf("task get next pending: find: %s", qr.Results[0].Error)
-	}
-
-	taskID, ok := qr.Results[0].Values[0][0].(string)
+	taskID, ok := findResults[0].Values[0][0].(string)
 	if !ok {
-		return task, false, fmt.Errorf("task get next pending: invalid task id type: %T", qr.Results[0].Values[0][0])
+		return task, false, fmt.Errorf("task get next pending: invalid task id type: %T", findResults[0].Values[0][0])
 	}
 
 	// Now update and get the task in a transaction.
@@ -253,7 +257,7 @@ where id = :id
 	}
 
 	// Execute both in a transaction.
-	rowsAffected, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{updateStmt})
+	rowsAffected, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&updateStmt})
 	if err != nil {
 		return task, false, fmt.Errorf("task get next pending: update: %w", err)
 	}
@@ -264,20 +268,20 @@ where id = :id
 	}
 
 	// Get the updated task.
-	qr, err = rq.Client.Query(ctx, rqlitehttp.SQLStatements{getStmt}, opts)
+	qr, err = rq.Client.Query(ctx, rqlitehttp.SQLStatements{&getStmt}, opts)
 	if err != nil {
 		return task, false, fmt.Errorf("task get next pending: get: %w", err)
 	}
 
-	if len(qr.Results) == 0 || len(qr.Results[0].Values) == 0 {
+	if hasErr, idx, msg := qr.HasError(); hasErr {
+		return task, false, fmt.Errorf("task get next pending: get: index %d: %s", idx, msg)
+	}
+	lockGetResults := qr.GetQueryResults()
+	if len(lockGetResults) == 0 || len(lockGetResults[0].Values) == 0 {
 		return task, false, fmt.Errorf("task get next pending: task disappeared")
 	}
 
-	if qr.Results[0].Error != "" {
-		return task, false, fmt.Errorf("task get next pending: get: %s", qr.Results[0].Error)
-	}
-
-	task, err = rq.parseTaskFromValues(qr.Results[0].Values[0])
+	task, err = rq.parseTaskFromValues(lockGetResults[0].Values[0])
 	if err != nil {
 		return task, false, fmt.Errorf("task get next pending: parse: %w", err)
 	}
@@ -293,7 +297,7 @@ func (rq *Rqlite) Cancel(ctx context.Context, id string) error {
 		},
 	}
 
-	_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+	_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		return fmt.Errorf("task cancel: %w", err)
 	}
@@ -321,7 +325,7 @@ func (rq *Rqlite) Release(ctx context.Context, id string, runnerID string, statu
 			},
 		}
 
-		_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+		_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 		if err != nil {
 			return fmt.Errorf("task release (completed): %w", err)
 		}
@@ -359,7 +363,7 @@ func (rq *Rqlite) Release(ctx context.Context, id string, runnerID string, statu
 				},
 			}
 
-			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 			if err != nil {
 				return fmt.Errorf("task release (failed permanently): %w", err)
 			}
@@ -387,7 +391,7 @@ func (rq *Rqlite) Release(ctx context.Context, id string, runnerID string, statu
 				},
 			}
 
-			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 			if err != nil {
 				return fmt.Errorf("task release (retry): %w", err)
 			}
@@ -412,7 +416,7 @@ func (rq *Rqlite) Release(ctx context.Context, id string, runnerID string, statu
 				},
 			}
 
-			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 			if err != nil {
 				return fmt.Errorf("task release (cancelled): %w", err)
 			}
@@ -432,7 +436,7 @@ func (rq *Rqlite) Release(ctx context.Context, id string, runnerID string, statu
 				},
 			}
 
-			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+			_, err := rq.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 			if err != nil {
 				return fmt.Errorf("task release (cancelled): %w", err)
 			}
@@ -541,19 +545,31 @@ func (rq *Rqlite) parseTaskFromValues(values []any) (task kv.Task, err error) {
 	}
 
 	// retry_count (int)
-	task.RetryCount, err = tryGetInt(values[9])
+	retryCountNum, ok := values[9].(json.Number)
+	if !ok {
+		return task, fmt.Errorf("retry_count: expected json.Number, got %T", values[9])
+	}
+	task.RetryCount, err = tryGetInt(retryCountNum)
 	if err != nil {
 		return task, fmt.Errorf("retry_count: %w", err)
 	}
 
 	// max_retries (int)
-	task.MaxRetries, err = tryGetInt(values[10])
+	maxRetriesNum, ok := values[10].(json.Number)
+	if !ok {
+		return task, fmt.Errorf("max_retries: expected json.Number, got %T", values[10])
+	}
+	task.MaxRetries, err = tryGetInt(maxRetriesNum)
 	if err != nil {
 		return task, fmt.Errorf("max_retries: %w", err)
 	}
 
 	// timeout_seconds (int)
-	task.TimeoutSeconds, err = tryGetInt(values[11])
+	timeoutNum, ok := values[11].(json.Number)
+	if !ok {
+		return task, fmt.Errorf("timeout_seconds: expected json.Number, got %T", values[11])
+	}
+	task.TimeoutSeconds, err = tryGetInt(timeoutNum)
 	if err != nil {
 		return task, fmt.Errorf("timeout_seconds: %w", err)
 	}

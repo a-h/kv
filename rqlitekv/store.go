@@ -163,7 +163,7 @@ func (s *Store) GetType(ctx context.Context, t kv.Type, offset, limit int) (rows
 		}
 	}
 
-	outputs, err := s.Query(ctx, rqlitehttp.SQLStatements{stmt})
+	outputs, err := s.Query(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		return nil, fmt.Errorf("gettype: %w", err)
 	}
@@ -175,7 +175,7 @@ func (s *Store) Put(ctx context.Context, key string, version int, value any) (er
 	if err != nil {
 		return fmt.Errorf("put: %w", err)
 	}
-	rowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+	rowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		if errors.Is(err, kv.ErrVersionMismatch) {
 			return kv.ErrVersionMismatch
@@ -196,7 +196,7 @@ func (s *Store) Patch(ctx context.Context, key string, version int, patch any) (
 	if err != nil {
 		return fmt.Errorf("patch: %w", err)
 	}
-	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		if errors.Is(err, kv.ErrVersionMismatch) {
 			return kv.ErrVersionMismatch
@@ -217,7 +217,7 @@ func (s *Store) Delete(ctx context.Context, keys ...string) (rowsAffected int, e
 	if err != nil {
 		return 0, fmt.Errorf("delete: %w", err)
 	}
-	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		return 0, fmt.Errorf("delete: %w", err)
 	}
@@ -232,7 +232,7 @@ func (s *Store) DeletePrefix(ctx context.Context, prefix string, offset, limit i
 	if err != nil {
 		return 0, fmt.Errorf("deleteprefix: %w", err)
 	}
-	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		return 0, fmt.Errorf("deleteprefix: %w", err)
 	}
@@ -244,7 +244,7 @@ func (s *Store) DeletePrefix(ctx context.Context, prefix string, offset, limit i
 
 func (s *Store) DeleteRange(ctx context.Context, from, to string, offset, limit int) (rowsAffected int, err error) {
 	stmt := s.createDeleteRangeMutationStatement(kv.DeleteRange(from, to, offset, limit))
-	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{stmt})
+	allRowsAffected, err := s.Mutate(ctx, rqlitehttp.SQLStatements{&stmt})
 	if err != nil {
 		return 0, fmt.Errorf("deleterange: %w", err)
 	}
@@ -298,7 +298,7 @@ func (s *Store) MutateAll(ctx context.Context, mutations ...kv.Mutation) ([]int,
 		if err != nil {
 			return nil, fmt.Errorf("mutateall: error creating statement: %w", err)
 		}
-		stmts[i] = stmt
+		stmts[i] = &stmt
 	}
 	return s.Mutate(ctx, stmts)
 }

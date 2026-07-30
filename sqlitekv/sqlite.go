@@ -9,8 +9,32 @@ import (
 	"time"
 
 	"github.com/a-h/kv"
+	"zombiezen.com/go/sqlite"
 	"zombiezen.com/go/sqlite/sqlitex"
 )
+
+// NewPool creates a SQLite connection pool with production-ready pragma defaults:
+// a 5s busy timeout to ride out brief write contention, and a WAL size cap to
+// prevent unbounded file growth. If opts.PrepareConn is set, it runs after the
+// default pragmas.
+func NewPool(uri string, opts sqlitex.PoolOptions) (pool *sqlitex.Pool, err error) {
+	userPrepare := opts.PrepareConn
+	opts.PrepareConn = func(conn *sqlite.Conn) error {
+		for _, p := range []string{
+			`pragma busy_timeout = 5000`,
+			`pragma journal_size_limit = 67108864`,
+		} {
+			if err := sqlitex.Execute(conn, p, nil); err != nil {
+				return err
+			}
+		}
+		if userPrepare == nil {
+			return nil
+		}
+		return userPrepare(conn)
+	}
+	return sqlitex.NewPool(uri, opts)
+}
 
 func newPool(pool *sqlitex.Pool) *Sqlite {
 	return &Sqlite{

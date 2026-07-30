@@ -3,6 +3,7 @@ package rqlitekv
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -52,27 +53,28 @@ func (re *RqliteExecutor) QueryIntScalar(ctx context.Context, sql string) (int, 
 	q := rqlitehttp.SQLStatement{
 		SQL: sql,
 	}
-	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{q}, opts)
+	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{&q}, opts)
 	if err != nil {
 		return 0, err
 	}
-	if len(qr.Results) != 1 {
-		return 0, fmt.Errorf("expected 1 result, got %d", len(qr.Results))
+	if hasErr, _, msg := qr.HasError(); hasErr {
+		return 0, fmt.Errorf("%s", msg)
 	}
-	if qr.Results[0].Error != "" {
-		return 0, fmt.Errorf("%s", qr.Results[0].Error)
+	results := qr.GetQueryResults()
+	if len(results) != 1 {
+		return 0, fmt.Errorf("expected 1 result, got %d", len(results))
 	}
-	if len(qr.Results[0].Values) != 1 {
-		return 0, fmt.Errorf("expected 1 row, got %d", len(qr.Results[0].Values))
+	if len(results[0].Values) != 1 {
+		return 0, fmt.Errorf("expected 1 row, got %d", len(results[0].Values))
 	}
-	if len(qr.Results[0].Values[0]) != 1 {
-		return 0, fmt.Errorf("expected 1 column, got %d", len(qr.Results[0].Values[0]))
+	if len(results[0].Values[0]) != 1 {
+		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
 	}
-	vt, ok := qr.Results[0].Values[0][0].(float64)
+	n, ok := results[0].Values[0][0].(json.Number)
 	if !ok {
-		return 0, fmt.Errorf("expected float64, got %T", qr.Results[0].Values[0][0])
+		return 0, fmt.Errorf("expected json.Number, got %T", results[0].Values[0][0])
 	}
-	return int(vt), nil
+	return tryGetInt(n)
 }
 
 func (re *RqliteExecutor) GetVersion(ctx context.Context) (int, error) {
@@ -83,30 +85,31 @@ func (re *RqliteExecutor) GetVersion(ctx context.Context) (int, error) {
 	q := rqlitehttp.SQLStatement{
 		SQL: "select max(version) from migration_version",
 	}
-	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{q}, opts)
+	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{&q}, opts)
 	if err != nil {
 		return 0, err
 	}
-	if len(qr.Results) != 1 {
-		return 0, fmt.Errorf("expected 1 result, got %d", len(qr.Results))
-	}
-	if qr.Results[0].Error != "" {
-		if strings.Contains(qr.Results[0].Error, "no such table") {
+	if hasErr, _, msg := qr.HasError(); hasErr {
+		if strings.Contains(msg, "no such table") {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("%s", qr.Results[0].Error)
+		return 0, fmt.Errorf("%s", msg)
 	}
-	if len(qr.Results[0].Values) != 1 {
-		return 0, fmt.Errorf("expected 1 row, got %d", len(qr.Results[0].Values))
+	results := qr.GetQueryResults()
+	if len(results) != 1 {
+		return 0, fmt.Errorf("expected 1 result, got %d", len(results))
 	}
-	if len(qr.Results[0].Values[0]) != 1 {
-		return 0, fmt.Errorf("expected 1 column, got %d", len(qr.Results[0].Values[0]))
+	if len(results[0].Values) != 1 {
+		return 0, fmt.Errorf("expected 1 row, got %d", len(results[0].Values))
 	}
-	vt, ok := qr.Results[0].Values[0][0].(float64)
+	if len(results[0].Values[0]) != 1 {
+		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
+	}
+	n, ok := results[0].Values[0][0].(json.Number)
 	if !ok {
-		return 0, fmt.Errorf("expected float64, got %T", qr.Results[0].Values[0][0])
+		return 0, fmt.Errorf("expected json.Number, got %T", results[0].Values[0][0])
 	}
-	return int(vt), nil
+	return tryGetInt(n)
 }
 
 func (re *RqliteExecutor) SetVersion(ctx context.Context, migrationSQL string, version int) error {
@@ -150,7 +153,7 @@ func (re *RqliteExecutor) AcquireMigrationLock(ctx context.Context) error {
 		Transaction: true,
 		Wait:        true,
 	}
-	qr, err := re.client.Execute(ctx, rqlitehttp.SQLStatements{createTableStmt}, opts)
+	qr, err := re.client.Execute(ctx, rqlitehttp.SQLStatements{&createTableStmt}, opts)
 	if err != nil {
 		return err
 	}
@@ -164,7 +167,7 @@ func (re *RqliteExecutor) AcquireMigrationLock(ctx context.Context) error {
 	stmt := rqlitehttp.SQLStatement{
 		SQL: "insert or ignore into migration_lock (id, locked_at) values (1, datetime('now'))",
 	}
-	qr, err = re.client.Execute(ctx, rqlitehttp.SQLStatements{stmt}, opts)
+	qr, err = re.client.Execute(ctx, rqlitehttp.SQLStatements{&stmt}, opts)
 	if err != nil {
 		return err
 	}
@@ -186,7 +189,7 @@ func (re *RqliteExecutor) ReleaseMigrationLock(ctx context.Context) error {
 		Transaction: true,
 		Wait:        true,
 	}
-	qr, err := re.client.Execute(ctx, rqlitehttp.SQLStatements{stmt}, opts)
+	qr, err := re.client.Execute(ctx, rqlitehttp.SQLStatements{&stmt}, opts)
 	if err != nil {
 		return err
 	}

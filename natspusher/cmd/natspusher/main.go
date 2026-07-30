@@ -129,7 +129,7 @@ func run(ctx context.Context, cli CLI, logger *slog.Logger) error {
 func createStore(cli CLI) (kv.Store, error) {
 	switch cli.StoreType {
 	case "sqlite":
-		pool, err := sqlitex.NewPool(cli.StoreConnection, sqlitex.PoolOptions{})
+		pool, err := sqlitekv.NewPool(cli.StoreConnection, sqlitex.PoolOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create SQLite pool: %w", err)
 		}
@@ -143,7 +143,10 @@ func createStore(cli CLI) (kv.Store, error) {
 		password := u.Query().Get("password")
 		// Remove user and password from the connection string.
 		u.RawQuery = ""
-		client := rqlitehttp.NewClient(u.String(), nil)
+		client, err := rqlitehttp.NewClient(u.String(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create rqlite client: %w", err)
+		}
 		if user != "" && password != "" {
 			client.SetBasicAuth(user, password)
 		}

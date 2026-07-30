@@ -22,8 +22,6 @@ kubectl logs -n kvtest job/kv-benchmark-job
 
 ### exec
 
-Interactive: true
-
 ```bash
 kubectl exec -it -n kvtest deployment/kv-benchmark -- /bin/bash
 ```

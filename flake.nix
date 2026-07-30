@@ -39,7 +39,7 @@
         src = gitignore.lib.gitignoreSource ./.;
         go = pkgs.go;
         subPackages = [ "cmd/kv" ];
-        vendorHash = "sha256-a15Oi2WZdMOVM+u1vIVEJaIDTMFyFZ/uTT1BB5NelYE==";
+        vendorHash = "sha256-bIox3vT4qyp1B5/63CiWZ2Xz54LJxfsfMvUbdYQY5Wc=";
         env = {
           CGO_ENABLED = 0;
         };
