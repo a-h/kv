@@ -38,7 +38,7 @@ To connect to a sqlite database, use `--type sqlite --connection 'file:data.db?m
 
 To connect to a postgres database, use `--type postgres --connection 'postgres://postgres:secret@localhost:5432/testdb?sslmode=disable'`.
 
-Start the development services with `xc docker-run-services` to get RQLite, PostgreSQL, and NATS running locally.
+Start the development services with `xc services-run` to get RQLite, PostgreSQL, and NATS running locally.
 
 ```bash
 # Create a new data.db file (use the --connection flag to specify a different file).
@@ -722,52 +722,12 @@ gunzip -f /tmp/kv.tar.gz
 crane push /tmp/kv.tar ${CONTAINER_REGISTRY}/kv:v0.0.1
 ```
 
-### docker-services-run
+### services-run
 
 Start development services (RQLite, PostgreSQL, NATS with JetStream).
 
 ```bash
-docker compose up
-```
-
-### docker-services-stop
-
-Stop development services.
-
-```bash
-docker compose down
-```
-
-### docker-services-logs
-
-View logs from development services.
-
-```bash
-docker compose logs -f
-```
-
-### nerdctl-services-run
-
-Start development services using Rancher Desktop (nerdctl).
-
-```bash
-nerdctl compose up
-```
-
-### nerdctl-services-stop
-
-Stop development services using Rancher Desktop (nerdctl).
-
-```bash
-nerdctl compose down
-```
-
-### nerdctl-services-logs
-
-View logs from development services using Rancher Desktop (nerdctl).
-
-```bash
-nerdctl compose logs -f
+process-compose up
 ```
 
 ### rqlite-db-shell
