@@ -549,30 +549,33 @@ func (rq *Rqlite) parseTaskFromValues(values []any) (task kv.Task, err error) {
 	if !ok {
 		return task, fmt.Errorf("retry_count: expected json.Number, got %T", values[9])
 	}
-	task.RetryCount, err = tryGetInt(retryCountNum)
+	retryCountInt, err := retryCountNum.Int64()
 	if err != nil {
-		return task, fmt.Errorf("retry_count: %w", err)
+		return task, fmt.Errorf("retry_count: expected integer, got %s", retryCountNum)
 	}
+	task.RetryCount = int(retryCountInt)
 
 	// max_retries (int)
 	maxRetriesNum, ok := values[10].(json.Number)
 	if !ok {
 		return task, fmt.Errorf("max_retries: expected json.Number, got %T", values[10])
 	}
-	task.MaxRetries, err = tryGetInt(maxRetriesNum)
+	maxRetriesInt, err := maxRetriesNum.Int64()
 	if err != nil {
-		return task, fmt.Errorf("max_retries: %w", err)
+		return task, fmt.Errorf("max_retries: expected integer, got %s", maxRetriesNum)
 	}
+	task.MaxRetries = int(maxRetriesInt)
 
 	// timeout_seconds (int)
 	timeoutNum, ok := values[11].(json.Number)
 	if !ok {
 		return task, fmt.Errorf("timeout_seconds: expected json.Number, got %T", values[11])
 	}
-	task.TimeoutSeconds, err = tryGetInt(timeoutNum)
+	timeoutInt, err := timeoutNum.Int64()
 	if err != nil {
-		return task, fmt.Errorf("timeout_seconds: %w", err)
+		return task, fmt.Errorf("timeout_seconds: expected integer, got %s", timeoutNum)
 	}
+	task.TimeoutSeconds = int(timeoutInt)
 
 	// locked_by (string)
 	if values[12] != nil {

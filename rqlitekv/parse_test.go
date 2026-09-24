@@ -8,43 +8,6 @@ import (
 	"github.com/a-h/kv"
 )
 
-func TestTryGetInt(t *testing.T) {
-	tests := []struct {
-		name        string
-		input       json.Number
-		expected    int
-		expectedErr bool
-	}{
-		{
-			name:     "integer",
-			input:    json.Number("42"),
-			expected: 42,
-		},
-		{
-			name:        "float",
-			input:       json.Number("3.14"),
-			expectedErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tryGetInt(tt.input)
-			if tt.expectedErr {
-				if err == nil {
-					t.Errorf("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tt.expected {
-				t.Errorf("got %d, expected %d", got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestNewRowFromValues(t *testing.T) {
 	created := time.Now().UTC().Truncate(time.Nanosecond)
 

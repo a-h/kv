@@ -2,7 +2,6 @@ package rqlitekv
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -38,85 +37,6 @@ func newTestRqlite(t *testing.T) (*Rqlite, error) {
 		return nil, err
 	}
 	return rq, nil
-}
-
-func TestTryGetInt(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    any
-		expected int
-		wantErr  bool
-	}{
-		{name: "json.Number integer can be converted", input: json.Number("42"), expected: 42},
-		{name: "json.Number zero can be converted", input: json.Number("0"), expected: 0},
-		{name: "nil returns error", input: nil, wantErr: true},
-		{name: "string returns error", input: "42", wantErr: true},
-		{name: "float64 returns error", input: float64(42), wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := tryGetInt(tt.input)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tt.expected {
-				t.Errorf("expected %d, got %d", tt.expected, got)
-			}
-		})
-	}
-}
-
-func TestNewRowFromValues(t *testing.T) {
-	t.Run("nil value column is handled without panic", func(t *testing.T) {
-		values := []any{
-			"key1",
-			json.Number("1"),
-			nil,
-			"Person",
-			"2026-01-01T00:00:00Z",
-		}
-		r, err := newRowFromValues(values)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if r.Value != nil {
-			t.Errorf("expected nil value, got %v", r.Value)
-		}
-	})
-
-	t.Run("non-string value column returns error not panic", func(t *testing.T) {
-		values := []any{
-			"key1",
-			json.Number("1"),
-			json.Number("123"),
-			"Person",
-			"2026-01-01T00:00:00Z",
-		}
-		_, err := newRowFromValues(values)
-		if err == nil {
-			t.Fatalf("expected error for non-string value column, got nil")
-		}
-	})
-
-	t.Run("nil created column returns error not panic", func(t *testing.T) {
-		values := []any{
-			"key1",
-			json.Number("1"),
-			`{"name":"Alice"}`,
-			"Person",
-			nil,
-		}
-		_, err := newRowFromValues(values)
-		if err == nil {
-			t.Fatalf("expected error for nil created column, got nil")
-		}
-	})
 }
 
 func TestStreamSeqWhenNoSequenceRowExists(t *testing.T) {

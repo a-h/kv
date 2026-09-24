@@ -3,6 +3,7 @@ package rqlitekv
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -66,7 +67,15 @@ func (re *RqliteExecutor) QueryIntScalar(ctx context.Context, sql string) (int, 
 	if len(results[0].Values[0]) != 1 {
 		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
 	}
-	return tryGetInt(results[0].Values[0][0])
+	n, ok := results[0].Values[0][0].(json.Number)
+	if !ok {
+		return 0, fmt.Errorf("expected json.Number, got %T", results[0].Values[0][0])
+	}
+	i, err := n.Int64()
+	if err != nil {
+		return 0, fmt.Errorf("expected integer, got %s", n)
+	}
+	return int(i), nil
 }
 
 func (re *RqliteExecutor) GetVersion(ctx context.Context) (int, error) {
@@ -96,7 +105,15 @@ func (re *RqliteExecutor) GetVersion(ctx context.Context) (int, error) {
 	if len(results[0].Values[0]) != 1 {
 		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
 	}
-	return tryGetInt(results[0].Values[0][0])
+	n, ok := results[0].Values[0][0].(json.Number)
+	if !ok {
+		return 0, fmt.Errorf("expected json.Number, got %T", results[0].Values[0][0])
+	}
+	i, err := n.Int64()
+	if err != nil {
+		return 0, fmt.Errorf("expected integer, got %s", n)
+	}
+	return int(i), nil
 }
 
 func (re *RqliteExecutor) SetVersion(ctx context.Context, migrationSQL string, version int) error {

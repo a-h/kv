@@ -135,7 +135,15 @@ func (rq *Rqlite) QueryScalarInt64(ctx context.Context, sql string, params map[s
 	if len(results[0].Values[0]) != 1 {
 		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
 	}
-	return tryGetInt(results[0].Values[0][0])
+	n, ok := results[0].Values[0][0].(json.Number)
+	if !ok {
+		return 0, fmt.Errorf("expected json.Number, got %T", results[0].Values[0][0])
+	}
+	i, err := n.Int64()
+	if err != nil {
+		return 0, fmt.Errorf("expected integer, got %s", n)
+	}
+	return int(i), nil
 }
 
 func checkResultColumnsStream(result rqlitehttp.QueryResult) (err error) {
@@ -167,9 +175,15 @@ func newRowFromValues(values []any) (r kv.Record, err error) {
 	if !ok {
 		return r, fmt.Errorf("row: key: expected string, got %T", values[0])
 	}
-	if r.Version, err = tryGetInt(values[1]); err != nil {
-		return r, fmt.Errorf("row: version: %w", err)
+	versionNum, ok := values[1].(json.Number)
+	if !ok {
+		return r, fmt.Errorf("row: version: expected json.Number, got %T", values[1])
 	}
+	versionInt, err := versionNum.Int64()
+	if err != nil {
+		return r, fmt.Errorf("row: version: expected integer, got %s", versionNum)
+	}
+	r.Version = int(versionInt)
 	if values[2] != nil {
 		s, ok := values[2].(string)
 		if !ok {
@@ -197,10 +211,15 @@ func newStreamRowFromValues(values []any) (r kv.StreamRecord, err error) {
 	if len(values) != 7 {
 		return r, fmt.Errorf("streamrow: expected 7 columns, got %d", len(values))
 	}
-	r.Seq, err = tryGetInt(values[0])
-	if err != nil {
-		return r, fmt.Errorf("streamrow: seq: %w", err)
+	seqNum, ok := values[0].(json.Number)
+	if !ok {
+		return r, fmt.Errorf("streamrow: seq: expected json.Number, got %T", values[0])
 	}
+	seqInt, err := seqNum.Int64()
+	if err != nil {
+		return r, fmt.Errorf("streamrow: seq: expected integer, got %s", seqNum)
+	}
+	r.Seq = int(seqInt)
 	actionString, ok := values[1].(string)
 	if !ok {
 		return r, fmt.Errorf("streamrow: action: expected string, got %T", values[1])
@@ -210,18 +229,6 @@ func newStreamRowFromValues(values []any) (r kv.StreamRecord, err error) {
 		return r, fmt.Errorf("streamrow: record: %w", err)
 	}
 	return r, nil
-}
-
-func tryGetInt(v any) (int, error) {
-	n, ok := v.(json.Number)
-	if !ok {
-		return 0, fmt.Errorf("expected json.Number, got %T", v)
-	}
-	i, err := n.Int64()
-	if err != nil {
-		return 0, fmt.Errorf("converting json.Number to int: %w", err)
-	}
-	return int(i), nil
 }
 
 func (rq *Rqlite) Mutate(ctx context.Context, stmts rqlitehttp.SQLStatements) (rowsAffected []int, err error) {
