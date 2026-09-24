@@ -2,6 +2,7 @@ package postgreskv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -183,7 +184,7 @@ func (p *Postgres) LockStatus(ctx context.Context, name string) (status kv.LockS
 	row := p.Pool.QueryRow(ctx, `select name, locked_by, locked_at, lock_until from locks where name = @name limit 1;`, pgx.NamedArgs{"name": name})
 	var lockedAt, expiresAt time.Time
 	err = row.Scan(&status.Name, &status.LockedBy, &lockedAt, &expiresAt)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return status, false, nil
 	}
 	if err != nil {

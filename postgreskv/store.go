@@ -293,14 +293,6 @@ func (s *Store) query(ctx context.Context, sql string, args pgx.NamedArgs) (reco
 	return records, nil
 }
 
-func (s *Store) queryScalarInt(ctx context.Context, sql string, args pgx.NamedArgs) (v int, err error) {
-	row := s.Pool.QueryRow(ctx, sql, args)
-	if err = row.Scan(&v); err != nil {
-		return 0, fmt.Errorf("queryscalarint: %w", err)
-	}
-	return v, nil
-}
-
 func (s *Store) createPutMutationStatement(m kv.PutMutation) (SQLStatement, error) {
 	jsonValue, err := json.Marshal(m.Value)
 	if err != nil {

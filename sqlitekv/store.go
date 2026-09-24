@@ -500,7 +500,7 @@ var deleteStreamAll = SQLStatement{
 }
 
 func (s *Store) StreamSeq(ctx context.Context) (seq int, err error) {
-	sql := `select coalesce(seq, 0) from sqlite_sequence where name = 'stream';`
+	sql := `select coalesce(max(seq), 0) from sqlite_sequence where name = 'stream';`
 	return s.QueryScalarInt64(ctx, sql, nil)
 }
 

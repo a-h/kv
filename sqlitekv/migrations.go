@@ -56,7 +56,7 @@ func (se *SqliteExecutor) GetVersion(ctx context.Context) (v int, err error) {
 			return nil
 		},
 	}
-	err = sqlitex.Execute(conn, "select max(version) from migration_version", opts)
+	err = sqlitex.Execute(conn, "select coalesce(max(version), 0) from migration_version", opts)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
 			return 0, nil

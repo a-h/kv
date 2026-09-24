@@ -93,36 +93,36 @@ func parseTaskFromStmt(stmt *sqlite.Stmt) (task kv.Task, err error) {
 		return task, fmt.Errorf("error parsing scheduled_for time: %w", err)
 	}
 
-	if startedAtStr := stmt.GetText("started_at"); startedAtStr != "" {
-		startedAt, err := time.Parse(time.RFC3339Nano, startedAtStr)
+	if s := stmt.GetText("started_at"); s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
 		if err != nil {
 			return task, fmt.Errorf("error parsing started_at time: %w", err)
 		}
-		task.StartedAt = &startedAt
+		task.StartedAt = &t
 	}
 
-	if completedAtStr := stmt.GetText("completed_at"); completedAtStr != "" {
-		completedAt, err := time.Parse(time.RFC3339Nano, completedAtStr)
+	if s := stmt.GetText("completed_at"); s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
 		if err != nil {
 			return task, fmt.Errorf("error parsing completed_at time: %w", err)
 		}
-		task.CompletedAt = &completedAt
+		task.CompletedAt = &t
 	}
 
-	if lockedAtStr := stmt.GetText("locked_at"); lockedAtStr != "" {
-		lockedAt, err := time.Parse(time.RFC3339Nano, lockedAtStr)
+	if s := stmt.GetText("locked_at"); s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
 		if err != nil {
 			return task, fmt.Errorf("error parsing locked_at time: %w", err)
 		}
-		task.LockedAt = &lockedAt
+		task.LockedAt = &t
 	}
 
-	if lockExpiresAtStr := stmt.GetText("lock_expires_at"); lockExpiresAtStr != "" {
-		lockExpiresAt, err := time.Parse(time.RFC3339Nano, lockExpiresAtStr)
+	if s := stmt.GetText("lock_expires_at"); s != "" {
+		t, err := time.Parse(time.RFC3339Nano, s)
 		if err != nil {
 			return task, fmt.Errorf("error parsing lock_expires_at time: %w", err)
 		}
-		task.LockExpiresAt = &lockExpiresAt
+		task.LockExpiresAt = &t
 	}
 
 	return task, nil
@@ -136,7 +136,7 @@ func (s *Scheduler) List(ctx context.Context, status kv.TaskStatus, name string,
 	defer s.Pool.Put(conn)
 
 	var tasks []kv.Task
-	sql, namedParams := getTaskListQuery(status, name, offset, limit)
+	sql, namedParams := s.getTaskListQuery(status, name, offset, limit)
 
 	opts := &sqlitex.ExecOptions{
 		Named: namedParams,
@@ -158,8 +158,7 @@ func (s *Scheduler) List(ctx context.Context, status kv.TaskStatus, name string,
 	return tasks, nil
 }
 
-// getTaskListQuery builds the SQL query and parameters for TaskList based on the given filters.
-func getTaskListQuery(status kv.TaskStatus, name string, offset, limit int) (string, map[string]any) {
+func (s *Scheduler) getTaskListQuery(status kv.TaskStatus, name string, offset, limit int) (string, map[string]any) {
 	const (
 		queryAll             = `select id, name, payload, status, created, scheduled_for, started_at, completed_at, last_error, retry_count, max_retries, timeout_seconds, locked_by, locked_at, lock_expires_at from tasks order by created desc limit :limit offset :offset;`
 		queryByStatus        = `select id, name, payload, status, created, scheduled_for, started_at, completed_at, last_error, retry_count, max_retries, timeout_seconds, locked_by, locked_at, lock_expires_at from tasks where status = :status order by created desc limit :limit offset :offset;`
@@ -191,8 +190,7 @@ func getTaskListQuery(status kv.TaskStatus, name string, offset, limit int) (str
 	return queryAll, namedParams
 }
 
-// getTaskGetNextPendingStatement builds the SQL statement for TaskGetNextPending based on task types.
-func getTaskGetNextPendingStatement(runnerID string, now, lockExpiresAt time.Time, taskTypes []string) SQLStatement {
+func (s *Scheduler) getTaskGetNextPendingStatement(runnerID string, now, lockExpiresAt time.Time, taskTypes []string) SQLStatement {
 	const (
 		sqlAllTypes = `update tasks set 
     status = 'running',
@@ -257,7 +255,7 @@ func (s *Scheduler) Lock(ctx context.Context, runnerID string, lockDuration time
 	now := s.Now()
 	lockExpiresAt := now.Add(lockDuration)
 
-	stmt := getTaskGetNextPendingStatement(runnerID, now, lockExpiresAt, taskTypes)
+	stmt := s.getTaskGetNextPendingStatement(runnerID, now, lockExpiresAt, taskTypes)
 
 	conn, err := s.Pool.Take(ctx)
 	if err != nil {
@@ -326,7 +324,6 @@ func (s *Scheduler) Release(ctx context.Context, id string, runnerID string, sta
 	return nil
 }
 
-// getReleaseCompletedStatement returns the SQL statement for completing a task.
 func (s *Scheduler) getReleaseCompletedStatement(id, runnerID string) SQLStatement {
 	return SQLStatement{
 		SQL: `update tasks set 
@@ -346,7 +343,6 @@ func (s *Scheduler) getReleaseCompletedStatement(id, runnerID string) SQLStateme
 	}
 }
 
-// getReleaseFailedStatement returns the SQL statement for handling a failed task.
 func (s *Scheduler) getReleaseFailedStatement(ctx context.Context, id, runnerID, errorMessage string) (SQLStatement, error) {
 	// First get the current task to check retry logic.
 	task, ok, err := s.Get(ctx, id)
@@ -407,7 +403,6 @@ func (s *Scheduler) getReleaseFailedStatement(ctx context.Context, id, runnerID,
 	}, nil
 }
 
-// getReleaseCancelledStatement returns the SQL statement for cancelling a task.
 func (s *Scheduler) getReleaseCancelledStatement(id, runnerID, errorMessage string) SQLStatement {
 	if errorMessage != "" {
 		return SQLStatement{

@@ -31,7 +31,7 @@ func (pe *PostgresExecutor) QueryIntScalar(ctx context.Context, sql string) (int
 
 func (pe *PostgresExecutor) GetVersion(ctx context.Context) (int, error) {
 	var version int
-	err := pe.pool.QueryRow(ctx, "select max(version) from migration_version").Scan(&version)
+	err := pe.pool.QueryRow(ctx, "select coalesce(max(version), 0) from migration_version").Scan(&version)
 	if err != nil {
 		if strings.Contains(err.Error(), "relation") && strings.Contains(err.Error(), "does not exist") {
 			return 0, nil
@@ -46,6 +46,7 @@ func (pe *PostgresExecutor) SetVersion(ctx context.Context, migrationSQL string,
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback(ctx)
 
 	if _, err := tx.Exec(ctx, migrationSQL); err != nil {
 		return err
