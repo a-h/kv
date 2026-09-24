@@ -472,11 +472,11 @@ func (rq *Rqlite) parseTaskFromValues(values []any) (task kv.Task, err error) {
 
 	// payload (string - base64 encoded binary data in RQLite)
 	if values[2] != nil {
-		payloadStr, ok := values[2].(string)
+		payload, ok := values[2].(string)
 		if !ok {
 			return task, fmt.Errorf("payload: expected string, got %T", values[2])
 		}
-		decoded, err := base64.StdEncoding.DecodeString(payloadStr)
+		decoded, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {
 			return task, fmt.Errorf("payload: failed to decode base64: %w", err)
 		}
@@ -484,56 +484,56 @@ func (rq *Rqlite) parseTaskFromValues(values []any) (task kv.Task, err error) {
 	}
 
 	// status (string)
-	statusStr, ok := values[3].(string)
+	status, ok := values[3].(string)
 	if !ok {
 		return task, fmt.Errorf("status: expected string, got %T", values[3])
 	}
-	task.Status = kv.TaskStatus(statusStr)
+	task.Status = kv.TaskStatus(status)
 
 	// created (string - RFC3339Nano)
-	createdStr, ok := values[4].(string)
+	created, ok := values[4].(string)
 	if !ok {
 		return task, fmt.Errorf("created: expected string, got %T", values[4])
 	}
-	task.Created, err = time.Parse(time.RFC3339Nano, createdStr)
+	task.Created, err = time.Parse(time.RFC3339Nano, created)
 	if err != nil {
 		return task, fmt.Errorf("created: failed to parse time: %w", err)
 	}
 
 	// scheduled_for (string - RFC3339Nano)
-	scheduledForStr, ok := values[5].(string)
+	scheduledFor, ok := values[5].(string)
 	if !ok {
 		return task, fmt.Errorf("scheduled_for: expected string, got %T", values[5])
 	}
-	task.ScheduledFor, err = time.Parse(time.RFC3339Nano, scheduledForStr)
+	task.ScheduledFor, err = time.Parse(time.RFC3339Nano, scheduledFor)
 	if err != nil {
 		return task, fmt.Errorf("scheduled_for: failed to parse time: %w", err)
 	}
 
 	// started_at (nullable string - RFC3339Nano)
 	if values[6] != nil {
-		startedAtStr, ok := values[6].(string)
+		startedAt, ok := values[6].(string)
 		if !ok {
 			return task, fmt.Errorf("started_at: expected string, got %T", values[6])
 		}
-		startedAt, err := time.Parse(time.RFC3339Nano, startedAtStr)
+		t, err := time.Parse(time.RFC3339Nano, startedAt)
 		if err != nil {
 			return task, fmt.Errorf("started_at: failed to parse time: %w", err)
 		}
-		task.StartedAt = &startedAt
+		task.StartedAt = &t
 	}
 
 	// completed_at (nullable string - RFC3339Nano)
 	if values[7] != nil {
-		completedAtStr, ok := values[7].(string)
+		completedAt, ok := values[7].(string)
 		if !ok {
 			return task, fmt.Errorf("completed_at: expected string, got %T", values[7])
 		}
-		completedAt, err := time.Parse(time.RFC3339Nano, completedAtStr)
+		t, err := time.Parse(time.RFC3339Nano, completedAt)
 		if err != nil {
 			return task, fmt.Errorf("completed_at: failed to parse time: %w", err)
 		}
-		task.CompletedAt = &completedAt
+		task.CompletedAt = &t
 	}
 
 	// last_error (string)
@@ -584,28 +584,28 @@ func (rq *Rqlite) parseTaskFromValues(values []any) (task kv.Task, err error) {
 
 	// locked_at (nullable string - RFC3339Nano)
 	if values[13] != nil {
-		lockedAtStr, ok := values[13].(string)
+		lockedAt, ok := values[13].(string)
 		if !ok {
 			return task, fmt.Errorf("locked_at: expected string, got %T", values[13])
 		}
-		lockedAt, err := time.Parse(time.RFC3339Nano, lockedAtStr)
+		t, err := time.Parse(time.RFC3339Nano, lockedAt)
 		if err != nil {
 			return task, fmt.Errorf("locked_at: failed to parse time: %w", err)
 		}
-		task.LockedAt = &lockedAt
+		task.LockedAt = &t
 	}
 
 	// lock_expires_at (nullable string - RFC3339Nano)
 	if values[14] != nil {
-		lockExpiresAtStr, ok := values[14].(string)
+		lockExpiresAt, ok := values[14].(string)
 		if !ok {
 			return task, fmt.Errorf("lock_expires_at: expected string, got %T", values[14])
 		}
-		lockExpiresAt, err := time.Parse(time.RFC3339Nano, lockExpiresAtStr)
+		t, err := time.Parse(time.RFC3339Nano, lockExpiresAt)
 		if err != nil {
 			return task, fmt.Errorf("lock_expires_at: failed to parse time: %w", err)
 		}
-		task.LockExpiresAt = &lockExpiresAt
+		task.LockExpiresAt = &t
 	}
 
 	return task, nil

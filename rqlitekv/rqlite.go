@@ -171,13 +171,22 @@ func newRowFromValues(values []any) (r kv.Record, err error) {
 		return r, fmt.Errorf("row: version: %w", err)
 	}
 	if values[2] != nil {
-		r.Value = []byte(values[2].(string))
+		s, ok := values[2].(string)
+		if !ok {
+			return r, fmt.Errorf("row: value: expected string, got %T", values[2])
+		}
+		r.Value = []byte(s)
 	}
 	r.Type, ok = values[3].(string)
 	if !ok {
 		return r, fmt.Errorf("row: type: expected string, got %T", values[3])
 	}
-	r.Created, err = time.Parse(time.RFC3339Nano, values[4].(string))
+	var created string
+	created, ok = values[4].(string)
+	if !ok {
+		return r, fmt.Errorf("row: created: expected string, got %T", values[4])
+	}
+	r.Created, err = time.Parse(time.RFC3339Nano, created)
 	if err != nil {
 		return r, fmt.Errorf("row: failed to parse created time: %w", err)
 	}
@@ -463,19 +472,19 @@ func (rq *Rqlite) LockStatus(ctx context.Context, name string) (status kv.LockSt
 	if status.LockedBy, okType = values[1].(string); !okType {
 		return status, false, fmt.Errorf("expected string for locked_by, got %T", values[1])
 	}
-	lockedAtStr, okType := values[2].(string)
+	lockedAt, okType := values[2].(string)
 	if !okType {
 		return status, false, fmt.Errorf("expected string for locked_at, got %T", values[2])
 	}
-	status.LockedAt, err = time.Parse(time.RFC3339Nano, lockedAtStr)
+	status.LockedAt, err = time.Parse(time.RFC3339Nano, lockedAt)
 	if err != nil {
 		return status, false, fmt.Errorf("failed to parse locked_at: %w", err)
 	}
-	expiresAtStr, okType := values[3].(string)
+	expiresAt, okType := values[3].(string)
 	if !okType {
 		return status, false, fmt.Errorf("expected string for expires_at, got %T", values[3])
 	}
-	status.ExpiresAt, err = time.Parse(time.RFC3339Nano, expiresAtStr)
+	status.ExpiresAt, err = time.Parse(time.RFC3339Nano, expiresAt)
 	if err != nil {
 		return status, false, fmt.Errorf("failed to parse expires_at: %w", err)
 	}
