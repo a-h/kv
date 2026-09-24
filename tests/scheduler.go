@@ -473,7 +473,8 @@ func newSchedulerTaskFlowTest(ctx context.Context, scheduler kv.Scheduler) func(
 	return func(t *testing.T) {
 		// Test complete task lifecycle: create -> lock -> complete.
 		now := time.Now().UTC()
-		task := kv.NewTask("lifecycle-test", []byte(`{"message": "end-to-end test"}`))
+		taskName := uniqueTaskName("lifecycle-test")
+		task := kv.NewTask(taskName, []byte(`{"message": "end-to-end test"}`))
 		task.ScheduledFor = now.Add(-1 * time.Minute) // Ready to run.
 		task.MaxRetries = 1
 		task.TimeoutSeconds = 120
@@ -503,7 +504,7 @@ func newSchedulerTaskFlowTest(ctx context.Context, scheduler kv.Scheduler) func(
 
 		// Lock the task.
 		runnerID := "lifecycle-runner"
-		lockedTask, locked, err := scheduler.Lock(ctx, runnerID, 5*time.Minute, "lifecycle-test")
+		lockedTask, locked, err := scheduler.Lock(ctx, runnerID, 5*time.Minute, taskName)
 		if err != nil {
 			t.Fatalf("unexpected error locking task: %v", err)
 		}

@@ -1,0 +1,51 @@
+version: "0.5"
+
+processes:
+  postgres:
+    command: |
+      if [ ! -f .postgres/PG_VERSION ]; then
+        initdb -D .postgres --username=postgres --pwfile=<(echo secret) --auth=md5
+      fi
+      postgres -D .postgres -k /tmp -p 5432
+    readiness_probe:
+      exec:
+        command: pg_isready -h localhost -p 5432 -U postgres
+      initial_delay_seconds: 2
+      period_seconds: 2
+    availability:
+      restart: on_failure
+
+  rqlite:
+    command: |
+      rqlited \
+        -node-id node0 \
+        -http-addr 127.0.0.1:4001 \
+        -raft-addr 127.0.0.1:4002 \
+        -bootstrap-expect 1 \
+        -auth auth.json \
+        .rqlite
+    readiness_probe:
+      exec:
+        command: curl -sf http://admin:secret@127.0.0.1:4001/status
+      initial_delay_seconds: 2
+      period_seconds: 2
+    availability:
+      restart: on_failure
+
+  nats:
+    command: |
+      nats-server \
+        --name kv-nats \
+        --jetstream \
+        --store_dir .nats \
+        --http_port 8222 \
+        --port 4222
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8222
+        path: /varz
+      initial_delay_seconds: 2
+      period_seconds: 2
+    availability:
+      restart: on_failure

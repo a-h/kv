@@ -100,7 +100,9 @@
         # Database tools.
         pkgs.rqlite # Distributed sqlite.
         pkgs.postgresql # PostgreSQL. Comes with `psql -h localhost -u postgres` and password `secret` as per the README.md file.
+        pkgs.nats-server # NATS server for JetStream.
         pkgs.natscli # NATS CLI for testing and monitoring NATS server.
+        pkgs.process-compose # Process orchestrator for local development services.
       ];
 
       name = "kv";

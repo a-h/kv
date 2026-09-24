@@ -6,3 +6,5 @@
 /natspusher/cmd/natspusher/natspusher
 /np
 /.rqlite
+/.postgres
+/.nats

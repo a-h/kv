@@ -59,12 +59,12 @@ func (rq *Rqlite) Query(ctx context.Context, stmts rqlitehttp.SQLStatements) (ou
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)
 	}
-	if hasErr, idx, msg := qr.HasError(); hasErr {
-		return nil, fmt.Errorf("query: index %d: %s", idx, msg)
-	}
-	queryResults := qr.GetQueryResults()
-	outputs = make([][]kv.Record, len(queryResults))
-	for i, result := range queryResults {
+	results := qr.GetQueryResults()
+	outputs = make([][]kv.Record, len(results))
+	for i, result := range results {
+		if result.Error != "" {
+			return nil, fmt.Errorf("query: index %d: %s", i, result.Error)
+		}
 		if err := checkResultColumns(result); err != nil {
 			return nil, fmt.Errorf("query: %w", err)
 		}
@@ -89,12 +89,12 @@ func (rq *Rqlite) QueryStream(ctx context.Context, stmts rqlitehttp.SQLStatement
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)
 	}
-	if hasErr, idx, msg := qr.HasError(); hasErr {
-		return nil, fmt.Errorf("query: index %d: %s", idx, msg)
-	}
-	streamResults := qr.GetQueryResults()
-	outputs = make([][]kv.StreamRecord, len(streamResults))
-	for i, result := range streamResults {
+	results := qr.GetQueryResults()
+	outputs = make([][]kv.StreamRecord, len(results))
+	for i, result := range results {
+		if result.Error != "" {
+			return nil, fmt.Errorf("query: index %d: %s", i, result.Error)
+		}
 		if err := checkResultColumnsStream(result); err != nil {
 			return nil, fmt.Errorf("query: %w", err)
 		}
@@ -115,32 +115,27 @@ func (rq *Rqlite) QueryScalarInt64(ctx context.Context, sql string, params map[s
 		Timeout: rq.Timeout,
 		Level:   rq.ReadConsistency,
 	}
-	q := rqlitehttp.SQLStatement{
+	qr, err := rq.Client.Query(ctx, rqlitehttp.SQLStatements{{
 		SQL:         sql,
 		NamedParams: params,
-	}
-	qr, err := rq.Client.Query(ctx, rqlitehttp.SQLStatements{&q}, opts)
+	}}, opts)
 	if err != nil {
 		return 0, err
 	}
-	if hasErr, idx, msg := qr.HasError(); hasErr {
-		return 0, fmt.Errorf("statement %d: %s", idx, msg)
+	results := qr.GetQueryResults()
+	if len(results) != 1 {
+		return 0, fmt.Errorf("expected 1 result, got %d", len(results))
 	}
-	scalarResults := qr.GetQueryResults()
-	if len(scalarResults) != 1 {
-		return 0, fmt.Errorf("expected 1 result, got %d", len(scalarResults))
+	if results[0].Error != "" {
+		return 0, fmt.Errorf("%s", results[0].Error)
 	}
-	if len(scalarResults[0].Values) != 1 {
-		return 0, fmt.Errorf("expected 1 row, got %d", len(scalarResults[0].Values))
+	if len(results[0].Values) != 1 {
+		return 0, fmt.Errorf("expected 1 row, got %d", len(results[0].Values))
 	}
-	if len(scalarResults[0].Values[0]) != 1 {
-		return 0, fmt.Errorf("expected 1 column, got %d", len(scalarResults[0].Values[0]))
+	if len(results[0].Values[0]) != 1 {
+		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
 	}
-	n, ok := scalarResults[0].Values[0][0].(json.Number)
-	if !ok {
-		return 0, fmt.Errorf("expected json.Number, got %T", scalarResults[0].Values[0][0])
-	}
-	return tryGetInt(n)
+	return tryGetInt(results[0].Values[0][0])
 }
 
 func checkResultColumnsStream(result rqlitehttp.QueryResult) (err error) {
@@ -172,29 +167,17 @@ func newRowFromValues(values []any) (r kv.Record, err error) {
 	if !ok {
 		return r, fmt.Errorf("row: key: expected string, got %T", values[0])
 	}
-	n, ok := values[1].(json.Number)
-	if !ok {
-		return r, fmt.Errorf("row: version: expected json.Number, got %T", values[1])
-	}
-	if r.Version, err = tryGetInt(n); err != nil {
+	if r.Version, err = tryGetInt(values[1]); err != nil {
 		return r, fmt.Errorf("row: version: %w", err)
 	}
 	if values[2] != nil {
-		valueStr, ok := values[2].(string)
-		if !ok {
-			return r, fmt.Errorf("row: value: expected string, got %T", values[2])
-		}
-		r.Value = []byte(valueStr)
+		r.Value = []byte(values[2].(string))
 	}
 	r.Type, ok = values[3].(string)
 	if !ok {
 		return r, fmt.Errorf("row: type: expected string, got %T", values[3])
 	}
-	createdStr, ok := values[4].(string)
-	if !ok {
-		return r, fmt.Errorf("row: created: expected string, got %T", values[4])
-	}
-	r.Created, err = time.Parse(time.RFC3339Nano, createdStr)
+	r.Created, err = time.Parse(time.RFC3339Nano, values[4].(string))
 	if err != nil {
 		return r, fmt.Errorf("row: failed to parse created time: %w", err)
 	}
@@ -205,11 +188,7 @@ func newStreamRowFromValues(values []any) (r kv.StreamRecord, err error) {
 	if len(values) != 7 {
 		return r, fmt.Errorf("streamrow: expected 7 columns, got %d", len(values))
 	}
-	seqNum, ok := values[0].(json.Number)
-	if !ok {
-		return r, fmt.Errorf("streamrow: seq: expected json.Number, got %T", values[0])
-	}
-	r.Seq, err = tryGetInt(seqNum)
+	r.Seq, err = tryGetInt(values[0])
 	if err != nil {
 		return r, fmt.Errorf("streamrow: seq: %w", err)
 	}
@@ -224,10 +203,14 @@ func newStreamRowFromValues(values []any) (r kv.StreamRecord, err error) {
 	return r, nil
 }
 
-func tryGetInt(n json.Number) (int, error) {
+func tryGetInt(v any) (int, error) {
+	n, ok := v.(json.Number)
+	if !ok {
+		return 0, fmt.Errorf("expected json.Number, got %T", v)
+	}
 	i, err := n.Int64()
 	if err != nil {
-		return 0, fmt.Errorf("expected integer, got %s", n)
+		return 0, fmt.Errorf("converting json.Number to int: %w", err)
 	}
 	return int(i), nil
 }
@@ -378,14 +361,11 @@ func (rq *Rqlite) Stream(ctx context.Context, t kv.Type, seq int, limit int) (ro
 }
 
 var deleteStreamAll = rqlitehttp.SQLStatements{
-	{
-		SQL:         `delete from stream;`,
-		NamedParams: map[string]any{},
-	},
+	{SQL: `delete from stream;`},
 }
 
 func (rq *Rqlite) StreamSeq(ctx context.Context) (seq int, err error) {
-	sql := `select coalesce(seq, 0) from sqlite_sequence where name = 'stream';`
+	sql := `select coalesce(max(seq), 0) from sqlite_sequence where name = 'stream';`
 	return rq.QueryScalarInt64(ctx, sql, nil)
 }
 
@@ -408,6 +388,7 @@ func (rq *Rqlite) StreamTrim(ctx context.Context, seq int) (err error) {
 }
 
 func (rq *Rqlite) LockAcquire(ctx context.Context, name string, lockedBy string, forDuration time.Duration) (acquired bool, err error) {
+	now := rq.Now()
 	stmts := rqlitehttp.SQLStatements{
 		{
 			SQL: `insert into locks (name, locked_by, locked_at, expires_at)
@@ -421,8 +402,8 @@ where locks.expires_at <= :now
 			NamedParams: map[string]any{
 				"name":       name,
 				"locked_by":  lockedBy,
-				"now":        rq.Now().Format(time.RFC3339Nano),
-				"expires_at": rq.Now().Add(forDuration).Format(time.RFC3339Nano),
+				"now":        now.Format(time.RFC3339Nano),
+				"expires_at": now.Add(forDuration).Format(time.RFC3339Nano),
 			},
 		},
 	}
@@ -467,14 +448,11 @@ func (rq *Rqlite) LockStatus(ctx context.Context, name string) (status kv.LockSt
 	if err != nil {
 		return status, false, err
 	}
-	if hasErr, idx, msg := qr.HasError(); hasErr {
-		return status, false, fmt.Errorf("lockstatus: index %d: %s", idx, msg)
-	}
-	lockResults := qr.GetQueryResults()
-	if len(lockResults) == 0 || len(lockResults[0].Values) == 0 {
+	results := qr.GetQueryResults()
+	if len(results) == 0 || len(results[0].Values) == 0 {
 		return status, false, nil
 	}
-	values := lockResults[0].Values[0]
+	values := results[0].Values[0]
 	if len(values) != 4 {
 		return status, false, fmt.Errorf("expected 4 columns, got %d", len(values))
 	}

@@ -3,7 +3,6 @@ package rqlitekv
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -23,9 +22,7 @@ type RqliteExecutor struct {
 
 func (re *RqliteExecutor) Exec(ctx context.Context, sql string) error {
 	stmts := rqlitehttp.SQLStatements{
-		{
-			SQL: sql,
-		},
+		{SQL: sql},
 	}
 	opts := &rqlitehttp.ExecuteOptions{
 		Transaction: true,
@@ -50,19 +47,18 @@ func (re *RqliteExecutor) QueryIntScalar(ctx context.Context, sql string) (int, 
 		Timeout: re.timeout,
 		Level:   re.readConsistency,
 	}
-	q := rqlitehttp.SQLStatement{
+	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{{
 		SQL: sql,
-	}
-	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{&q}, opts)
+	}}, opts)
 	if err != nil {
 		return 0, err
-	}
-	if hasErr, _, msg := qr.HasError(); hasErr {
-		return 0, fmt.Errorf("%s", msg)
 	}
 	results := qr.GetQueryResults()
 	if len(results) != 1 {
 		return 0, fmt.Errorf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Error != "" {
+		return 0, fmt.Errorf("%s", results[0].Error)
 	}
 	if len(results[0].Values) != 1 {
 		return 0, fmt.Errorf("expected 1 row, got %d", len(results[0].Values))
@@ -70,11 +66,7 @@ func (re *RqliteExecutor) QueryIntScalar(ctx context.Context, sql string) (int, 
 	if len(results[0].Values[0]) != 1 {
 		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
 	}
-	n, ok := results[0].Values[0][0].(json.Number)
-	if !ok {
-		return 0, fmt.Errorf("expected json.Number, got %T", results[0].Values[0][0])
-	}
-	return tryGetInt(n)
+	return tryGetInt(results[0].Values[0][0])
 }
 
 func (re *RqliteExecutor) GetVersion(ctx context.Context) (int, error) {
@@ -82,22 +74,21 @@ func (re *RqliteExecutor) GetVersion(ctx context.Context) (int, error) {
 		Timeout: re.timeout,
 		Level:   re.readConsistency,
 	}
-	q := rqlitehttp.SQLStatement{
-		SQL: "select max(version) from migration_version",
-	}
-	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{&q}, opts)
+	qr, err := re.client.Query(ctx, rqlitehttp.SQLStatements{{
+		SQL: "select coalesce(max(version), 0) from migration_version",
+	}}, opts)
 	if err != nil {
 		return 0, err
-	}
-	if hasErr, _, msg := qr.HasError(); hasErr {
-		if strings.Contains(msg, "no such table") {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("%s", msg)
 	}
 	results := qr.GetQueryResults()
 	if len(results) != 1 {
 		return 0, fmt.Errorf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Error != "" {
+		if strings.Contains(results[0].Error, "no such table") {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("%s", results[0].Error)
 	}
 	if len(results[0].Values) != 1 {
 		return 0, fmt.Errorf("expected 1 row, got %d", len(results[0].Values))
@@ -105,11 +96,7 @@ func (re *RqliteExecutor) GetVersion(ctx context.Context) (int, error) {
 	if len(results[0].Values[0]) != 1 {
 		return 0, fmt.Errorf("expected 1 column, got %d", len(results[0].Values[0]))
 	}
-	n, ok := results[0].Values[0][0].(json.Number)
-	if !ok {
-		return 0, fmt.Errorf("expected json.Number, got %T", results[0].Values[0][0])
-	}
-	return tryGetInt(n)
+	return tryGetInt(results[0].Values[0][0])
 }
 
 func (re *RqliteExecutor) SetVersion(ctx context.Context, migrationSQL string, version int) error {
